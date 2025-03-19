@@ -9,13 +9,121 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Add your models here
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
+  id            String   @id @default(cuid())
+  name          String
+  email         String?
+  city          String?
+  gender        String?
+  // age           Int?
+  mobileNumber  String   @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relationships
+  registeredEvents    EventRegistration[] 
+  completedEvents     CompletedEvent[]
+  poolAttendees       PoolAttendee[]
+}
+
+model Event {
+  id            String   @id @default(cuid())
+  title         String  
+  description   String?
+  eventDate     DateTime
+  eventTime     String
+  price         Float?      @default(0)
+  maxCapacity   Int      @default(100)
+  registrationDeadline DateTime?
+  poolsAssigned Boolean  @default(false)
+  notificationSent Boolean @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relationships
+  registrations  EventRegistration[]
+  completions    CompletedEvent[]
+  eventTrainers  EventTrainer[]
+  pools          Pool[]
+}
+
+model Trainer {
+  id            String   @id @default(cuid())
+  name          String
+  email         String?
+  mobileNumber  String   @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relationships
+  events        EventTrainer[]
+  pools         Pool[]
+}
+
+// Junction table for many-to-many relationship between Event and User (registered)
+model EventRegistration {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  event     Event    @relation(fields: [eventId], references: [id])
+  eventId   String
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, eventId])
+}
+
+// Junction table for many-to-many relationship between Event and User (completed)
+model CompletedEvent {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  event     Event    @relation(fields: [eventId], references: [id])
+  eventId   String
+  completedAt DateTime @default(now())
+  
+  @@unique([userId, eventId])
+}
+
+// Junction table for many-to-many relationship between Event and Trainer
+model EventTrainer {
+  id        String   @id @default(cuid())
+  trainer   Trainer  @relation(fields: [trainerId], references: [id])
+  trainerId String
+  event     Event    @relation(fields: [eventId], references: [id])
+  eventId   String
+  createdAt DateTime @default(now())
+  
+  @@unique([trainerId, eventId])
+}
+
+// Pool model for subdivisions within an event
+model Pool {
+  id        String   @id @default(cuid())
   name      String?
+  meetLink  String?
+  capacity  Int      @default(100)
+  isActive  Boolean  @default(false)
+  
+  // Relationships
+  event     Event    @relation(fields: [eventId], references: [id])
+  eventId   String
+  trainer   Trainer? @relation(fields: [trainerId], references: [id])
+  trainerId String?
+  attendees PoolAttendee[]
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// Add more models as needed
+// Junction table for many-to-many relationship between Pool and User (attendees)
+model PoolAttendee {
+  id        String   @id @default(cuid())
+  pool      Pool     @relation(fields: [poolId], references: [id])
+  poolId    String
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  notified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  @@unique([poolId, userId])
+}
