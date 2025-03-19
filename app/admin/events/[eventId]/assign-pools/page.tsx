@@ -5,13 +5,9 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format } from 'date-fns';
 
-type PageProps = {
-  params: {
-    eventId: string;
-  };
-};
 
-export default function AssignPoolsPage({ params }: PageProps) {
+// @ts-expect-error
+export default function AssignPoolsPage({ params }) {
   const router = useRouter();
   const { eventId } = params;
   const [loading, setLoading] = useState(true);
