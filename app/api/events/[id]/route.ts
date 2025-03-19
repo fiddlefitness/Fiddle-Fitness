@@ -1,6 +1,6 @@
 // app/api/events/[id]/route.js
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import {prisma} from '@/lib/prisma';
 
 // Get a specific event by ID
 export async function GET(request, { params }) {
