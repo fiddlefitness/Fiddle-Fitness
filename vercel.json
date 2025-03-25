@@ -14,16 +14,13 @@
       "schedule": "0 8 * * *"
     }
   ],
-  "env": {
-    "SCHEDULER_API_KEY": "@scheduler_api_key"
-  },
   "headers": [
     {
       "source": "/api/scheduler/(.*)",
       "headers": [
         {
           "key": "X-API-Key",
-          "value": "${env.SCHEDULER_API_KEY}"
+          "value": "${env.NEXT_PUBLIC_API_KEY}"
         },
         {
           "key": "Cache-Control",
