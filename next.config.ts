@@ -1,36 +1,22 @@
-import type { NextConfig } from 'next'
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // Start with bare essentials
   eslint: {
-    // Warning only instead of failing the build
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // Dangerously allow production builds to successfully complete even if
-    // your project has type errors.
     ignoreBuildErrors: true,
   },
-  // Add your redirects here
-  redirects: async () => {
-    return [
-      {
-        source: '/old-page',
-        destination: '/new-page',
-        permanent: true,
-      },
-      // Add more redirects as needed
-    ];
-  },
-  // Other legacy config options you might need
+  // Force setting routes to undefined to prevent conflict
+  // @ts-ignore - Explicitly override the problematic property
+  routes: undefined,
+  // Legacy properties
   rewrites: async () => {
     return [];
   },
-  headers: async () => {
+  redirects: async () => {
     return [];
-  },
-  // Set these as needed
-  trailingSlash: false,
-  cleanUrls: true
+  }
 }
 
-export default nextConfig
+module.exports = nextConfig;
