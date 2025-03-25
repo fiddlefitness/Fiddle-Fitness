@@ -1,22 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Start with bare essentials
   eslint: {
     ignoreDuringBuilds: true,
   },
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Force setting routes to undefined to prevent conflict
-  // @ts-ignore - Explicitly override the problematic property
-  routes: undefined,
-  // Legacy properties
-  rewrites: async () => {
-    return [];
-  },
-  redirects: async () => {
-    return [];
-  }
+  // Important: Remove any of these properties if present
+  // rewrites: async () => { ... },
+  // redirects: async () => { ... },
+  // headers: async () => { ... },
+  // cleanUrls: true,
+  // trailingSlash: false
 }
 
-module.exports = nextConfig;
+module.exports = nextConfig
