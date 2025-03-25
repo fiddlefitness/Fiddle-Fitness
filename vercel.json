@@ -17,19 +17,14 @@
   "env": {
     "SCHEDULER_API_KEY": "@scheduler_api_key"
   },
-  "routes": [
-    {
-      "src": "/api/scheduler/(.*)",
-      "headers": {
-        "X-API-Key": "${env.SCHEDULER_API_KEY}"
-      },
-      "continue": true
-    }
-  ],
   "headers": [
     {
       "source": "/api/scheduler/(.*)",
       "headers": [
+        {
+          "key": "X-API-Key",
+          "value": "${env.SCHEDULER_API_KEY}"
+        },
         {
           "key": "Cache-Control",
           "value": "no-store, max-age=0"
