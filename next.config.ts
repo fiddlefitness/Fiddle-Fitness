@@ -6,12 +6,8 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Important: Remove any of these properties if present
-  // rewrites: async () => { ... },
-  // redirects: async () => { ... },
-  // headers: async () => { ... },
-  // cleanUrls: true,
-  // trailingSlash: false
+  // Add this line - it sometimes resolves the conflict
+  assetPrefix: '',
 }
 
 module.exports = nextConfig
