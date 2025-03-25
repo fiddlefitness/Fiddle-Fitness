@@ -1,9 +1,12 @@
-// app/api/users/route.js
+// app/api/users/route.js 
 import { NextResponse } from 'next/server';
-import {prisma} from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
+import { extractLast10Digits } from '@/lib/formatMobileNumber';
+import { withApiKey } from '@/lib/authMiddleware';
+import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds';
 
 // Get all users
-export async function GET(request) {
+async function getUsers(request) {
   try {
     const users = await prisma.user.findMany({
       orderBy: {
@@ -22,12 +25,14 @@ export async function GET(request) {
 }
 
 // Create a new user
-export async function POST(request) {
+async function createUser(request) {
   try {
     const data = await request.json();
+    const mobileNumber = extractLast10Digits(data.mobileNumber);
+    console.log(mobileNumber)
     
     // Validate required fields
-    if (!data.name || !data.mobileNumber) {
+    if (!data.name || !mobileNumber) {
       return NextResponse.json(
         { error: 'Name and mobile number are required' },
         { status: 400 }
@@ -37,12 +42,12 @@ export async function POST(request) {
     // Check if user with same mobile number already exists
     const existingUser = await prisma.user.findUnique({
       where: {
-        mobileNumber: data.mobileNumber
+        mobileNumber: mobileNumber
       }
     });
     
     let user;
-
+    
     console.log(data.age)
     
     if (existingUser) {
@@ -67,7 +72,7 @@ export async function POST(request) {
           email: data.email,
           city: data.city,
           gender: data.gender,
-          mobileNumber: data.mobileNumber,
+          mobileNumber: mobileNumber,
         //   age: data.age ? parseInt(data.age) : null
         }
       });
@@ -87,53 +92,22 @@ export async function POST(request) {
         ]
       },
       select: {
-        id: true,
-        title: true,
-        description: true,
-        eventDate: true,
-        eventTime: true,
-        // price: true,
-        registrationDeadline: true,
-        // Include trainer information
-        eventTrainers: {
-          include: {
-            trainer: {
-              select: {
-                name: true
-              }
-            }
-          }
-        }
+        category: true
       },
       orderBy: {
         eventDate: 'asc'
       }
     });
     
-    // Format events for the response
-    const formattedEvents = upcomingEvents.map(event => {
-      const trainerNames = event.eventTrainers.map(et => et.trainer.name);
-      
-      // Remove eventTrainers from the response
-      const { eventTrainers, ...eventData } = event;
-      
-      return {
-        ...eventData,
-        trainers: trainerNames,
-        price: event.price || 0,
-        formattedDate: event.eventDate.toLocaleDateString('en-US', {
-          weekday: 'long',
-          month: 'long',
-          day: 'numeric',
-          year: 'numeric'
-        })
-      };
-    });
+    // Extract unique categories from upcoming events
+    const eventCategories = [...new Set(upcomingEvents.map(event => event.category))];
+
+    const formattedCategories = EVENT_CATEGORIES.filter(category => eventCategories.includes(category.value));
     
-    // Return the user and upcoming events
+    // Return the user and upcoming event categories
     return NextResponse.json({
       user,
-      upcomingEvents: formattedEvents
+      EventCategories : formattedCategories
     }, { status: existingUser ? 200 : 201 });
   } catch (error) {
     console.error('Error creating user:', error);
@@ -143,3 +117,7 @@ export async function POST(request) {
     );
   }
 }
+
+// Export the handlers with API key middleware
+export const GET = withApiKey(getUsers);
+export const POST = withApiKey(createUser);

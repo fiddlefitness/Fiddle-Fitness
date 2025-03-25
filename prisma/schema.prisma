@@ -15,7 +15,6 @@ model User {
   email         String?
   city          String?
   gender        String?
-  // age           Int?
   mobileNumber  String   @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -24,6 +23,8 @@ model User {
   registeredEvents    EventRegistration[] 
   completedEvents     CompletedEvent[]
   poolAttendees       PoolAttendee[]
+  payments            Payment[]
+  paymentOrders       PaymentOrder[]
 }
 
 model Event {
@@ -32,8 +33,11 @@ model Event {
   description   String?
   eventDate     DateTime
   eventTime     String
-  price         Float?      @default(0)
+  location      String?
+  category      String
+  price         Float?   @default(0)
   maxCapacity   Int      @default(100)
+  poolCapacity  Int      @default(100)  // Added pool capacity field
   registrationDeadline DateTime?
   poolsAssigned Boolean  @default(false)
   notificationSent Boolean @default(false)
@@ -45,6 +49,7 @@ model Event {
   completions    CompletedEvent[]
   eventTrainers  EventTrainer[]
   pools          Pool[]
+  paymentOrders  PaymentOrder[]
 }
 
 model Trainer {
@@ -67,6 +72,8 @@ model EventRegistration {
   userId    String
   event     Event    @relation(fields: [eventId], references: [id])
   eventId   String
+  payment   Payment? @relation(fields: [paymentId], references: [id])
+  paymentId String?
   createdAt DateTime @default(now())
   
   @@unique([userId, eventId])
@@ -103,10 +110,12 @@ model Pool {
   meetLink  String?
   capacity  Int      @default(100)
   isActive  Boolean  @default(false)
-  
-  // Relationships
-  event     Event    @relation(fields: [eventId], references: [id])
+
+  // Use onDelete: Cascade to automatically delete pools when the event is deleted
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   eventId   String
+  
+  // Use onDelete: Cascade to automatically delete associated PoolAttendee
   trainer   Trainer? @relation(fields: [trainerId], references: [id])
   trainerId String?
   attendees PoolAttendee[]
@@ -118,12 +127,52 @@ model Pool {
 // Junction table for many-to-many relationship between Pool and User (attendees)
 model PoolAttendee {
   id        String   @id @default(cuid())
-  pool      Pool     @relation(fields: [poolId], references: [id])
+
+  // Use onDelete: Cascade to automatically delete attendees when the pool is deleted
+  pool      Pool     @relation(fields: [poolId], references: [id], onDelete: Cascade)
   poolId    String
+
   user      User     @relation(fields: [userId], references: [id])
   userId    String
   notified  Boolean  @default(false)
   createdAt DateTime @default(now())
-  
+
   @@unique([poolId, userId])
+}
+
+// Payment model to track payment transactions
+model Payment {
+  id            String   @id @default(cuid())
+  amount        Float
+  currency      String   @default("INR")
+  paymentId     String?  @unique // Razorpay payment ID
+  orderId       String?  // Razorpay order ID
+  status        String   // pending, completed, failed, refunded
+  paymentMethod String?  // card, upi, netbanking, etc.
+  
+  // Relationships
+  user          User     @relation(fields: [userId], references: [id])
+  userId        String
+  registrations EventRegistration[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// PaymentOrder model to track Razorpay order creation
+model PaymentOrder {
+  id            String   @id @default(cuid())
+  orderId       String   @unique // Razorpay order ID
+  amount        Float
+  currency      String   @default("INR")
+  status        String   // created, paid, cancelled
+  
+  // Relationships
+  user          User     @relation(fields: [userId], references: [id])
+  userId        String
+  event         Event    @relation(fields: [eventId], references: [id])
+  eventId       String
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

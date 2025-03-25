@@ -1,8 +1,9 @@
 // app/api/users/[mobileNumber]/registrations/route.js
 import { NextResponse } from 'next/server';
 import {prisma} from '@/lib/prisma';
+import { withApiKey } from '@/lib/authMiddleware';
 
-export async function GET(request, { params }) {
+async function getUserRegistrations(request, { params }) {  
   try {
     const { mobileNumber } = params;
     
@@ -98,7 +99,7 @@ export async function GET(request, { params }) {
           year: 'numeric'
         }),
         eventTime: event.eventTime,
-        location: event.location,
+
         price: event.price || 0,
         registrationDate: reg.createdAt,
         isPast,
@@ -134,3 +135,5 @@ export async function GET(request, { params }) {
     );
   }
 }
+
+export const GET = withApiKey(getUserRegistrations);

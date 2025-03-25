@@ -6,17 +6,24 @@ import { sendAiSensyRequest } from './components/FiddleFitness'
 export default function Home() {
   const sendRequestHandler = async () => {
     const params = {
-      campaignName: 'Fiddle Fitness testing',
+      campaignName: 'Fiddle Fitness event testing',
       destination: '8305387299',
       userName: 'Fiddle Fitness LLP',
-      templateParams: [],
+      templateParams: [
+      'value 1',
+      'value 2',
+      'value 3',
+      'randomlink.com/userid/eventid'
+      ],
       source: 'new-landing-page form',
       media: {},
       buttons: [],
       carouselCards: [],
       location: {},
       attributes: {},
-      paramsFallbackValue: {},
+      paramsFallbackValue: {
+      FirstName: 'user'
+      },
     }
 
     const response = await sendAiSensyRequest(params)

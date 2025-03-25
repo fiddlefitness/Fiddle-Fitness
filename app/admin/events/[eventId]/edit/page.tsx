@@ -1,85 +1,160 @@
-// app/admin/events/add/page.js
-'use client'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
+// app/admin/events/[id]/edit/page.js
+'use client';
+
+import { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds';
 
 // Hardcoded list of fitness categories
 
-
-export default function AddEventPage() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [trainers, setTrainers] = useState([])
-  const [trainersLoading, setTrainersLoading] = useState(true)
-  const [selectedTrainers, setSelectedTrainers] = useState([])
-  const [error, setError] = useState(null)
+export default function EditEventPage({ params }) {
+  const router = useRouter();
+  const { eventId } = use(params);
+  
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [trainers, setTrainers] = useState([]);
+  const [trainersLoading, setTrainersLoading] = useState(true);
+  const [selectedTrainers, setSelectedTrainers] = useState([]);
+  const [error, setError] = useState(null);
+  
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    category: '',  // Added category field
+    category: '',
     eventDate: '',
     eventTime: '',
     maxCapacity: 100,
-    poolCapacity: 50, // Default value for pool capacity
+    poolCapacity: 50,
     price: 0,
     registrationDeadline: '',
-  })
+  });
 
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
+
+  // Fetch trainers and event data
   useEffect(() => {
-    // Fetch trainers from API
-    fetchTrainers()
-  }, [])
+    const fetchInitialData = async () => {
+      await Promise.all([
+        fetchTrainers(),
+        fetchEventData()
+      ]);
+      setInitialLoading(false);
+    };
+    
+    fetchInitialData();
+  }, [eventId]);
 
   const fetchTrainers = async () => {
-    setTrainersLoading(true)
+    setTrainersLoading(true);
     try {
       const res = await fetch('/api/trainers', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',
+          'X-API-Key': API_KEY,
         },
-      })
+      });
 
       if (!res.ok) {
-        throw new Error('Failed to fetch trainers')
+        throw new Error('Failed to fetch trainers');
       }
 
-      const data = await res.json()
-      setTrainers(data)
+      const data = await res.json();
+      setTrainers(data);
     } catch (error) {
-      console.error('Error fetching trainers:', error)
-      setError('Failed to load trainers. Please try again later.')
+      console.error('Error fetching trainers:', error);
+      setError('Failed to load trainers. Please try again later.');
     } finally {
-      setTrainersLoading(false)
+      setTrainersLoading(false);
     }
-  }
+  };
 
-  const handleChange = e => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+  const fetchEventData = async () => {
+    try {
+      const response = await fetch(`/api/events/${eventId}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': API_KEY,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch event');
+      }
+      
+      const eventData = await response.json();
+      
+      // Format dates for form inputs
+      const formattedEventDate = eventData.eventDate 
+        ? new Date(eventData.eventDate).toISOString().split('T')[0]
+        : '';
+        
+      const formattedDeadline = eventData.registrationDeadline
+        ? new Date(eventData.registrationDeadline).toISOString().split('T')[0]
+        : '';
+      
+      // Set form data
+      setFormData({
+        title: eventData.title || '',
+        description: eventData.description || '',
+        category: eventData.category || '',
+        eventDate: formattedEventDate,
+        eventTime: eventData.eventTime || '',
+        maxCapacity: eventData.maxCapacity || 100,
+        poolCapacity: eventData.poolCapacity || 50,
+        price: eventData.price || 0,
+        registrationDeadline: formattedDeadline
+      });
+      
+      // Set selected trainers
+      if (eventData.eventTrainers && eventData.eventTrainers.length > 0) {
+        const trainerIds = eventData.eventTrainers.map(et => et.trainerId);
+        setSelectedTrainers(trainerIds);
+      }
+    } catch (err) {
+      console.error('Error fetching event:', err);
+      setError(err.message);
+    }
+  };
 
+  const handleChange = (e) => {
+    const { name, value, type } = e.target;
+    
+    // Handle numeric inputs
+    if (type === 'number') {
+      setFormData({
+        ...formData,
+        [name]: value === '' ? '' : Number(value)
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [name]: value
+      });
+    }
+    
     // Clear error when user starts typing again
     if (error) {
-      setError(null)
+      setError(null);
     }
-  }
+  };
 
-  const handleTrainerSelect = trainerId => {
+  const handleTrainerSelect = (trainerId) => {
     // If trainer is already selected, remove them
     if (selectedTrainers.includes(trainerId)) {
-      setSelectedTrainers(selectedTrainers.filter(id => id !== trainerId))
+      setSelectedTrainers(selectedTrainers.filter(id => id !== trainerId));
     } else {
       // Otherwise add them to selected trainers
-      setSelectedTrainers([...selectedTrainers, trainerId])
+      setSelectedTrainers([...selectedTrainers, trainerId]);
     }
-  }
+  };
 
-  const handleSubmit = async e => {
-    e.preventDefault()
-
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
     // Validate category is selected
     if (!formData.category) {
       setError('Please select an event category');
@@ -97,50 +172,60 @@ export default function AddEventPage() {
     }
 
     if (selectedTrainers.length === 0) {
-      setError('Please select at least one trainer for the event.')
-      return
+      setError('Please select at least one trainer for the event.');
+      return;
     }
-
-    setLoading(true)
-    setError(null)
-
+    
+    setLoading(true);
+    setError(null);
+    
     try {
       // Combine form data with selected trainers
       const eventData = {
         ...formData,
         trainers: selectedTrainers,
-      }
-
-      const response = await fetch('/api/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json',
-          'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',
-         },
-        body: JSON.stringify(eventData),
-      })
-
-      const data = await response.json()
-
+      };
+      
+      const response = await fetch(`/api/events/${eventId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': API_KEY,
+        },
+        body: JSON.stringify(eventData)
+      });
+      
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create event')
+        throw new Error(data.error || 'Failed to update event');
       }
-
-      console.log('Event created:', data)
-      router.push('/admin/events')
-    } catch (error) {
-      console.error('Error creating event:', error)
-      setError(error.message || 'Error creating event. Please try again.')
+      
+      console.log('Event updated:', data);
+      router.push(`/admin/events/${eventId}`);
+      
+    } catch (err) {
+      console.error('Error updating event:', err);
+      setError(err.message || 'Error updating event. Please try again.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
+  };
+
+  if (initialLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    );
   }
 
   return (
     <div className='max-w-4xl mx-auto'>
       <div className='flex items-center justify-between mb-6'>
-        <h1 className='text-2xl font-bold'>Add New Event</h1>
+        <h1 className='text-2xl font-bold'>Edit Event</h1>
         <Link
-          href='/admin/events'
+          href={`/admin/events/${eventId}`}
           className='px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors'
         >
           Cancel
@@ -174,7 +259,7 @@ export default function AddEventPage() {
               />
             </div>
 
-            {/* Added Category Dropdown */}
+            {/* Category Dropdown */}
             <div>
               <label
                 htmlFor='category'
@@ -430,6 +515,12 @@ export default function AddEventPage() {
           </div>
 
           <div className='flex justify-end'>
+            <Link
+              href={`/admin/events/${eventId}`}
+              className='px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors mr-3'
+            >
+              Cancel
+            </Link>
             <button
               type='submit'
               disabled={loading || trainersLoading || trainers.length === 0}
@@ -439,11 +530,11 @@ export default function AddEventPage() {
                   : ''
               }`}
             >
-              {loading ? 'Creating...' : 'Create Event'}
+              {loading ? 'Saving...' : 'Update Event'}
             </button>
           </div>
         </form>
       </div>
     </div>
-  )
+  );
 }

@@ -17,7 +17,15 @@ export default function TrainersPage() {
     setError(null);
     
     try {
-      const res = await fetch('/api/trainers');
+      const res = await fetch('/api/trainers',
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || ''
+          }
+        }
+      );
       
       if (!res.ok) {
         throw new Error('Failed to fetch trainers');

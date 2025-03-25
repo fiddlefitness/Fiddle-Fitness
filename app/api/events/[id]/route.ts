@@ -1,9 +1,10 @@
 // app/api/events/[id]/route.js
 import { NextResponse } from 'next/server';
 import {prisma} from '@/lib/prisma';
+import { withApiKey } from '@/lib/authMiddleware';
 
 // Get a specific event by ID
-export async function GET(request, { params }) {
+async function getEvent(request, { params }) {
   const { id } = params;
   
   try {
@@ -106,7 +107,7 @@ export async function GET(request, { params }) {
 }
 
 // Update an event
-export async function PUT(request, { params }) {
+async function fixEvent(request, { params }) {
   const { id } = params;
   
   try {
@@ -187,7 +188,7 @@ export async function PUT(request, { params }) {
 }
 
 // Delete an event
-export async function DELETE(request, { params }) {
+async function deleteEvent(request, { params }) {
   const { id } = params;
   
   try {
@@ -239,3 +240,7 @@ export async function DELETE(request, { params }) {
     );
   }
 }
+
+export const GET = withApiKey(getEvent)
+export const PUT = withApiKey(fixEvent)
+export const DELETE = withApiKey(deleteEvent)

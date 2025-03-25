@@ -1,8 +1,9 @@
 // app/api/events/route.js
 import { NextResponse } from 'next/server';
 import {prisma} from '@/lib/prisma';
+import { withApiKey } from '@/lib/authMiddleware';
 
-export async function GET(request) {
+async function getEvents(request) {
   try {
     const { searchParams } = new URL(request.url);
     const filter = searchParams.get('filter') || 'all';
@@ -88,14 +89,14 @@ export async function GET(request) {
   }
 }
 // app/api/events/route.js (updated POST section)
-export async function POST(request) {
+async function postEvent(request) {
   try {
     const data = await request.json();
     
     // Validate required fields
-    if (!data.title || !data.eventDate || !data.eventTime || !data.trainers || data.trainers.length === 0) {
+    if (!data.title || !data.eventDate || !data.eventTime || !data.category || !data.trainers || data.trainers.length === 0) {
       return NextResponse.json(
-        { error: 'Title, event date, event time, and at least one trainer are required' },
+        { error: 'Title, event date, event time, category, and at least one trainer are required' },
         { status: 400 }
       );
     }
@@ -107,10 +108,13 @@ export async function POST(request) {
         data: {
           title: data.title,
           description: data.description,
+          category: data.category, // Added category field
           eventDate: new Date(data.eventDate),
           eventTime: data.eventTime,
+
           maxCapacity: parseInt(data.maxCapacity) || 100,
-          price: parseFloat(data.price) || 0, // Parse price field
+          poolCapacity: parseInt(data.poolCapacity) || 50, // Added pool capacity
+          price: parseFloat(data.price) || 0,
           registrationDeadline: data.registrationDeadline ? new Date(data.registrationDeadline) : null,
           poolsAssigned: false,
           notificationSent: false
@@ -141,3 +145,7 @@ export async function POST(request) {
     );
   }
 }
+
+
+export const GET = withApiKey(getEvents);
+export const POST = withApiKey(postEvent);

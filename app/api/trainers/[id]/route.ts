@@ -1,10 +1,11 @@
 // app/api/trainers/[id]/route.js
+import { withApiKey } from '@/lib/authMiddleware';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
 
 // Get a specific trainer by ID
-export async function GET(request, { params }) {
+async function getTrainer(request, { params }) {
   const { id } = params;
   
   try {
@@ -68,7 +69,7 @@ export async function GET(request, { params }) {
 }
 
 // Update a trainer
-export async function PUT(request, { params }) {
+async function updateTrainer(request, { params }) {
   const { id } = params;
   
   try {
@@ -122,7 +123,7 @@ export async function PUT(request, { params }) {
 }
 
 // Delete a trainer
-export async function DELETE(request, { params }) {
+async function deleteTrainer(request, { params }) {
   const { id } = params;
   
   try {
@@ -164,3 +165,7 @@ export async function DELETE(request, { params }) {
     );
   }
 }
+
+export const GET = withApiKey(getTrainer)
+export const PUT = withApiKey(updateTrainer)
+export const DELETE = withApiKey(deleteTrainer)

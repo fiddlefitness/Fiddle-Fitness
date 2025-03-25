@@ -1,13 +1,16 @@
 // app/api/users/register-event/route.js
 import { NextResponse } from 'next/server';
-import {prisma} from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
+import { extractLast10Digits } from '@/lib/formatMobileNumber';
 
 export async function POST(request) {
   try {
     const data = await request.json();
     
+    const mobileNumber = extractLast10Digits(data.mobileNumber);
+    
     // Validate required fields
-    if (!data.mobileNumber || !data.eventId) {
+    if (!mobileNumber || !data.eventId) {
       return NextResponse.json(
         { error: 'Mobile number and event ID are required' },
         { status: 400 }
@@ -17,7 +20,7 @@ export async function POST(request) {
     // Find user by mobile number
     const user = await prisma.user.findUnique({
       where: {
-        mobileNumber: data.mobileNumber
+        mobileNumber: mobileNumber
       }
     });
     
@@ -55,7 +58,7 @@ export async function POST(request) {
     }
     
     // Check if event is already at capacity
-    if (event.registrations.length >= event.maxCapacity) {
+    if (event.maxCapacity && event.registrations.length >= event.maxCapacity) {
       return NextResponse.json(
         { error: 'This event has reached maximum capacity' },
         { status: 400 }
@@ -74,6 +77,16 @@ export async function POST(request) {
       return NextResponse.json(
         { error: 'You are already registered for this event' },
         { status: 400 }
+      );
+    }
+    
+    // Only allow direct registration for free events or with proper verification
+    if (event.price > 0 && !data.freeEvent) {
+      // For paid events, direct registration is not allowed without payment verification
+      // This endpoint should only be used for free events or called from the payment verification API
+      return NextResponse.json(
+        { error: 'Payment verification required for this event' },
+        { status: 403 }
       );
     }
     
@@ -100,7 +113,6 @@ export async function POST(request) {
           title: registration.event.title,
           eventDate: registration.event.eventDate,
           eventTime: registration.event.eventTime,
-          location: registration.event.location || 'TBA'
         },
         registrationDate: registration.createdAt
       }
@@ -108,7 +120,7 @@ export async function POST(request) {
   } catch (error) {
     console.error('Error registering for event:', error);
     return NextResponse.json(
-      { error: 'Failed to register for event' },
+      { error: 'Failed to register for event: ' + error.message },
       { status: 500 }
     );
   }

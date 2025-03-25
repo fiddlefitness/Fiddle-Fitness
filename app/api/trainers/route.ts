@@ -1,9 +1,11 @@
 // app/api/trainers/route.js
+import { withApiKey } from '@/lib/authMiddleware';
+import { extractLast10Digits } from '@/lib/formatMobileNumber';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
 
-export async function GET() {
+async function getTrainers() {
   try {
     const trainers = await prisma.trainer.findMany({
       include: {
@@ -50,12 +52,14 @@ export async function GET() {
   }
 }
 
-export async function POST(request) {
+async function createTrainer(request) {
   try {
     const data = await request.json();
+
+    const mobileNumber = extractLast10Digits(data.mobileNumber);
     
     // Validate required fields
-    if (!data.name || !data.mobileNumber) {
+    if (!data.name || !mobileNumber) {
       return NextResponse.json(
         { error: 'Name and mobile number are required' },
         { status: 400 }
@@ -65,7 +69,7 @@ export async function POST(request) {
     // Check if trainer with same mobile number already exists
     const existingTrainer = await prisma.trainer.findUnique({
       where: {
-        mobileNumber: data.mobileNumber
+        mobileNumber: mobileNumber
       }
     });
     
@@ -81,7 +85,7 @@ export async function POST(request) {
       data: {
         name: data.name,
         email: data.email,
-        mobileNumber: data.mobileNumber
+        mobileNumber: mobileNumber
       }
     });
     
@@ -94,3 +98,6 @@ export async function POST(request) {
     );
   }
 }
+
+export const  GET  = withApiKey(getTrainers);
+export const  POST = withApiKey(createTrainer);

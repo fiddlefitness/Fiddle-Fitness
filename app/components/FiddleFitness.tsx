@@ -38,3 +38,41 @@ export async function sendAiSensyRequest(params: AiSensyRequestParams): Promise<
         throw error;
     }
 }
+// Function to send event notification to a user
+export const sendEventNotification = async (user, eventTitle, eventDate, eventTime, poolName, trainerName, meetLink) => {
+    // Format the event date and time for better readability
+    const formattedDate = new Date(eventDate).toLocaleDateString('en-IN', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    });
+    
+    // Remove '+' from mobile number if present
+    const cleanMobileNumber = user.mobileNumber.replace(/^\+/, '');
+    
+    const notificationParams = {
+      campaignName: `${eventTitle} - Pool Assignment`,
+      destination: cleanMobileNumber, 
+      userName: 'Fiddle Fitness LLP',
+      templateParams: [
+        user.name,                           // User name
+        eventTitle,                          // Event name
+        `${formattedDate} at ${eventTime}`,  // Event date and time
+        poolName,                            // Pool name
+        trainerName,                         // Trainer name
+        meetLink                             // Google Meet link
+      ],
+      source: 'event-pool-assignment',
+      media: {},
+      buttons: [],
+      carouselCards: [],
+      location: {},
+      attributes: {},
+      paramsFallbackValue: {
+        FirstName: user.name || 'User'
+      },
+    };
+  
+    return await sendAiSensyRequest(notificationParams);
+  };

@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "crons": [
+    {
+      "path": "/api/scheduler/assign-pools",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/scheduler/assign-pools",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/scheduler/send-reminders",
+      "schedule": "0 8 * * *"
+    }
+  ],
+  "env": {
+    "SCHEDULER_API_KEY": "@scheduler_api_key"
+  },
+  "routes": [
+    {
+      "src": "/api/scheduler/(.*)",
+      "headers": {
+        "X-API-Key": "${env.SCHEDULER_API_KEY}"
+      },
+      "continue": true
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/scheduler/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    }
+  ]
+}
