@@ -6,7 +6,7 @@ import { withApiKey } from '@/lib/authMiddleware';
 // Optional API key verification
 const verifyApiKey = (request) => {
   const authHeader = request.headers.get('authorization');
-  const apiKey = process.env.SCHEDULER_API_KEY;
+  // const apiKey = process.env.SCHEDULER_API_KEY;
   
   // Skip verification if no API key is configured (not recommended for production)
   if (!apiKey) return true;
@@ -18,15 +18,16 @@ const verifyApiKey = (request) => {
   return true;
 };
 
-async function getFunction(request) {
+
+export async function GET (request) {
   try {
     // Verify API key for security (optional but recommended)
-    if (!verifyApiKey(request)) {
-      return NextResponse.json(
-        { error: 'Unauthorized access' },
-        { status: 401 }
-      );
-    }
+    // if (!verifyApiKey(request)) {
+    //   return NextResponse.json(
+    //     { error: 'Unauthorized access' },
+    //     { status: 401 }
+    //   );
+    // }
     
     // Calculate tomorrow's date (at midnight)
     const today = new Date();
@@ -150,4 +151,4 @@ async function getFunction(request) {
 }
 
 
-export const GET = withApiKey(getFunction)
+// export const GET = withApiKey(getFunction)
