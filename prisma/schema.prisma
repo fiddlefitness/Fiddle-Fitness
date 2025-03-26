@@ -12,7 +12,7 @@ generator client {
 model User {
   id            String   @id @default(cuid())
   name          String
-  email         String?
+  email         String
   city          String?
   gender        String?
   mobileNumber  String   @unique
