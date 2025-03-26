@@ -42,7 +42,7 @@ export async function POST(request) {
     console.error('Error handling form submission:', error);
     return NextResponse.json(
       { error: 'Failed to process form submission' },
-      { status: 500 }
+      { status: 200 }
     );
   }
 }
