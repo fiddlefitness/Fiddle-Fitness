@@ -35,7 +35,9 @@ export async function POST(request) {
     // const result = await response.json();
     
     // Return the result to the chatbot
-    return NextResponse.json(result);
+    if(result) {
+        return result;
+    }
   } catch (error) {
     console.error('Error handling form submission:', error);
     return NextResponse.json(
