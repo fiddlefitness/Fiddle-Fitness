@@ -25,7 +25,7 @@ async function getUsers(request) {
 }
 
 // Create a new user
-async function createUser(request) {
+export async function createUser(request) {
   try {
     const data = await request.json();
     const mobileNumber = extractLast10Digits(data.mobileNumber);
