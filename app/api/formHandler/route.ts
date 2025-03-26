@@ -1,8 +1,8 @@
 // File: app/api/whatsapp/registration/route.js
 import { NextResponse } from 'next/server';
-
 import crypto from 'crypto';
 import { createUser } from '../users/route';
+
 
 // Function to extract the last 10 digits from a phone number
 function extractLast10Digits(phoneNumber) {
@@ -13,27 +13,113 @@ function extractLast10Digits(phoneNumber) {
 
 // Pre-defined screen responses
 const SCREEN_RESPONSES = {
-  // Initial registration screen
   REGISTRATION: {
     version: "3.0",
     screen: "REGISTRATION",
     data: {}
   },
-  // Confirmation screen with user details
   CONFIRMATION: {
     version: "3.0",
     screen: "CONFIRMATION",
     data: {}
+  },
+  SUCCESS: {
+    version: "3.0",
+    screen: "SUCCESS",
+    data: {
+      extension_message_response: {
+        params: {
+          flow_token: "REPLACE_FLOW_TOKEN",
+          registration_success: true
+        }
+      }
+    }
   }
 };
 
 /**
- * Main handler for WhatsApp flow requests
- * Handles various actions: INIT, data_exchange, ping
+ * Decrypt the request body from WhatsApp Flow
+ * @param {Object} body - The encrypted request body
+ * @param {string} privatePem - The private key in PEM format
+ * @returns {Object} Decrypted body and encryption parameters
  */
-async function handleFlowRequest(body) {
-  const { screen, action, data, version, flow_token } = body;
+function decryptRequest(body, privatePem) {
+  const { encrypted_aes_key, encrypted_flow_data, initial_vector } = body;
+
+  // Decrypt the AES key created by the client
+  const decryptedAesKey = crypto.privateDecrypt(
+    {
+      key: crypto.createPrivateKey(privatePem),
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "sha256",
+    },
+    Buffer.from(encrypted_aes_key, "base64"),
+  );
+
+  // Decrypt the Flow data
+  const flowDataBuffer = Buffer.from(encrypted_flow_data, "base64");
+  const initialVectorBuffer = Buffer.from(initial_vector, "base64");
+
+  const TAG_LENGTH = 16;
+  const encrypted_flow_data_body = flowDataBuffer.subarray(0, -TAG_LENGTH);
+  const encrypted_flow_data_tag = flowDataBuffer.subarray(-TAG_LENGTH);
+
+  const decipher = crypto.createDecipheriv(
+    "aes-128-gcm",
+    decryptedAesKey,
+    initialVectorBuffer,
+  );
+  decipher.setAuthTag(encrypted_flow_data_tag);
+
+  const decryptedJSONString = Buffer.concat([
+    decipher.update(encrypted_flow_data_body),
+    decipher.final(),
+  ]).toString("utf-8");
+
+  return {
+    decryptedBody: JSON.parse(decryptedJSONString),
+    aesKeyBuffer: decryptedAesKey,
+    initialVectorBuffer,
+  };
+}
+
+/**
+ * Encrypt the response for WhatsApp Flow
+ * @param {Object} response - The response object
+ * @param {Buffer} aesKeyBuffer - The AES key buffer
+ * @param {Buffer} initialVectorBuffer - The initialization vector buffer
+ * @returns {string} Encrypted response as base64 string
+ */
+function encryptResponse(response, aesKeyBuffer, initialVectorBuffer) {
+  // Flip the initialization vector
+  const flipped_iv = [];
+  for (const pair of initialVectorBuffer.entries()) {
+    flipped_iv.push(~pair[1]);
+  }
   
+  // Encrypt the response data
+  const cipher = crypto.createCipheriv(
+    "aes-128-gcm",
+    aesKeyBuffer,
+    Buffer.from(flipped_iv),
+  );
+  
+  return Buffer.concat([
+    cipher.update(JSON.stringify(response), "utf-8"),
+    cipher.final(),
+    cipher.getAuthTag(),
+  ]).toString("base64");
+}
+
+/**
+ * Process the WhatsApp Flow request
+ * @param {Object} decryptedBody - The decrypted request body
+ * @returns {Object} The response object
+ */
+async function processFlowRequest(decryptedBody) {
+  const { screen, action, data, flow_token, version } = decryptedBody;
+  console.log('Processing decrypted request:', { screen, action, data });
+
   // Handle health check request
   if (action === "ping") {
     return {
@@ -57,6 +143,30 @@ async function handleFlowRequest(body) {
 
   // Handle initial request when opening the flow
   if (action === "INIT") {
+    return {
+      ...SCREEN_RESPONSES.REGISTRATION
+    };
+  }
+
+  // Handle back navigation
+  if (action === "BACK") {
+    if (screen === "CONFIRMATION") {
+      // Going back from confirmation to registration
+      return {
+        ...SCREEN_RESPONSES.REGISTRATION,
+        data: {
+          // Pre-fill the data from the confirmation screen
+          name: data?.name || "",
+          email: data?.email || "",
+          age: data?.age || "",
+          gender: data?.gender || "",
+          city: data?.city || "",
+          phoneNumber: data?.phoneNumber || ""
+        }
+      };
+    }
+    
+    // Default back behavior
     return {
       ...SCREEN_RESPONSES.REGISTRATION
     };
@@ -100,8 +210,7 @@ async function handleFlowRequest(body) {
           
           // Return success response
           return {
-            version: version || "3.0",
-            screen: "SUCCESS",
+            ...SCREEN_RESPONSES.SUCCESS,
             data: {
               extension_message_response: {
                 params: {
@@ -115,8 +224,15 @@ async function handleFlowRequest(body) {
           console.error("Error creating user:", error);
           return {
             version: version || "3.0",
+            screen: "CONFIRMATION",
             data: {
-              error: "Failed to create user"
+              name: data.name,
+              email: data.email,
+              age: data.age,
+              gender: data.gender,
+              city: data.city,
+              phoneNumber: data.phoneNumber || "",
+              error_message: "Failed to create user. Please try again."
             }
           };
         }
@@ -139,15 +255,43 @@ async function handleFlowRequest(body) {
  */
 export async function POST(request) {
   try {
-    // Parse the request body
     const body = await request.json();
-    console.log('Received flow request:', JSON.stringify(body, null, 2));
+    console.log('Received encrypted request:', body);
+    
+    // Get the private key from environment variables
+    const PRIVATE_KEY = process.env.WHATSAPP_FLOW_PRIVATE_KEY;
+    
+    if (!PRIVATE_KEY) {
+      console.error('Missing WHATSAPP_FLOW_PRIVATE_KEY environment variable');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+    
+    // Decrypt the request
+    const { decryptedBody, aesKeyBuffer, initialVectorBuffer } = decryptRequest(body, PRIVATE_KEY);
+    console.log('Decrypted request body:', decryptedBody);
     
     // Process the request
-    const response = await handleFlowRequest(body);
+    const responseData = await processFlowRequest(decryptedBody);
     
-    // Return the response
-    return NextResponse.json(response);
+    // If the flow token needs to be included in the response
+    if (responseData.data?.extension_message_response?.params?.flow_token === "REPLACE_FLOW_TOKEN") {
+      responseData.data.extension_message_response.params.flow_token = decryptedBody.flow_token;
+    }
+    
+    console.log('Response data before encryption:', responseData);
+    
+    // Encrypt the response
+    const encryptedResponse = encryptResponse(responseData, aesKeyBuffer, initialVectorBuffer);
+    
+    // Return the encrypted response
+    return new Response(encryptedResponse, {
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    });
   } catch (error) {
     console.error('Error processing WhatsApp flow request:', error);
     return NextResponse.json(
@@ -166,17 +310,3 @@ export async function GET(request) {
     { status: 200 }
   );
 }
-
-/**
- * Note on Encryption:
- * 
- * The Meta example mentions encryption, but doesn't show the actual implementation.
- * If your WhatsApp Business Account requires encrypted responses, you'll need to:
- * 
- * 1. Obtain the encryption keys from your WhatsApp Business Account settings
- * 2. Implement encryption/decryption using those keys
- * 3. Decrypt incoming requests and encrypt outgoing responses
- * 
- * The encryption implementation would likely use AES or similar algorithm with
- * the keys provided by WhatsApp.
- */
