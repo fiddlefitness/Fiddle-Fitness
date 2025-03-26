@@ -120,4 +120,4 @@ async function createUser(request) {
 
 // Export the handlers with API key middleware
 export const GET = withApiKey(getUsers);
-export const POST = withApiKey(createUser);
+export const POST = withApiKey(createUser, {requireAuth: false});
