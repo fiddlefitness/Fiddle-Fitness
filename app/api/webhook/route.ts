@@ -50,15 +50,28 @@ export async function POST(req) {
           console.log(`Received message from ${from}: ${JSON.stringify(message)}`);
           
           // Handle interactive messages (list selections)
-          if (message.type === 'interactive' && message.interactive.type === 'button_reply') {
-            const selectedId = message.interactive.button_reply.id;
-            console.log(`User selected event with ID: ${selectedId}`);
+          if (message.type === 'interactive') {
+            let selectedId;
             
-            // Here you would process the selection
-            // await processEventSelection(from, selectedId);
-            
-            // Send a confirmation back to the user
-            await sendTextMessage(from, `You selected event ID: ${selectedId}`);
+            // WhatsApp returns 'list_reply' type for list selections
+            if (message.interactive.type === 'list_reply') {
+              selectedId = message.interactive.list_reply.id;
+              console.log(`User selected event with ID: ${selectedId}`);
+              
+              // Process the event selection
+              await processEventSelection(from, selectedId);
+              
+              // Send a confirmation back to the user
+              await sendTextMessage(from, `Thank you for selecting event ID: ${selectedId}. We'll process your selection.`);
+            }
+            // For button reply type (if you're using buttons too)
+            else if (message.interactive.type === 'button_reply') {
+              selectedId = message.interactive.button_reply.id;
+              console.log(`User selected button with ID: ${selectedId}`);
+              
+              // Send a confirmation back to the user
+              await sendTextMessage(from, `You selected button ID: ${selectedId}`);
+            }
           } 
           // Handle regular text messages
           else if (message.type === 'text') {
@@ -112,6 +125,57 @@ async function sendTextMessage(to, text) {
     console.error('Error sending message:', error);
     throw error;
   }
+}
+
+// Function to process event selection
+async function processEventSelection(userPhone, eventId) {
+  try {
+    console.log(`Processing event selection for user ${userPhone}, event ID: ${eventId}`);
+    
+    // Here you would typically:
+    // 1. Store the selection in your database
+    // 2. Update user's profile/preferences
+    // 3. Trigger any follow-up workflows
+    
+    // Example: Get event details based on ID
+    const eventDetails = await getEventDetails(eventId);
+    console.log(`Event details: ${JSON.stringify(eventDetails)}`);
+    
+    // Example: Store selection in database
+    // await storeUserSelection(userPhone, eventId);
+    
+    return true;
+  } catch (error) {
+    console.error('Error processing event selection:', error);
+    return false;
+  }
+}
+
+// Function to get event details from database or API
+async function getEventDetails(eventId) {
+  // In a real application, you would fetch this from your database
+  const eventsMap = {
+    'event_001': {
+      name: "Annual Conference 2025",
+      date: "April 15-17, 2025",
+      location: "Convention Center",
+      description: "Our flagship annual event"
+    },
+    'event_002': {
+      name: "Next.js Workshop",
+      date: "May 5, 2025",
+      location: "Online",
+      description: "Learn advanced Next.js techniques"
+    },
+    'event_003': {
+      name: "Networking Mixer",
+      date: "June 12, 2025",
+      location: "City Hotel",
+      description: "Connect with industry professionals"
+    }
+  };
+  
+  return eventsMap[eventId] || { name: "Unknown Event", description: "Event details not found" };
 }
 
 // Function to send event list
