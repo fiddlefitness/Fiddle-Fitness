@@ -238,7 +238,6 @@ async function processFlowRequest(decryptedBody) {
         }
       
       default:
-        console.error(`Unhandled screen: ${screen}`);
         break;
     }
   }
