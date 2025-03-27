@@ -23,18 +23,23 @@ const SCREEN_RESPONSES = {
     screen: "CONFIRMATION",
     data: {}
   },
-  SUCCESS: {
+  COMPLETE: {
+    version: "3.0",
+    screen: "COMPLETE",
+    data: {},
+  },
+   SUCCESS: {
     version: "3.0",
     screen: "SUCCESS",
     data: {
       extension_message_response: {
         params: {
           flow_token: "REPLACE_FLOW_TOKEN",
-          registration_success: true
-        }
-      }
-    }
-  }
+          some_param_name: "PASS_CUSTOM_VALUE",
+        },
+      },
+    },
+  },
 };
 
 /**
@@ -43,7 +48,7 @@ const SCREEN_RESPONSES = {
  * @param {string} privatePem - The private key in PEM format
  * @returns {Object} Decrypted body and encryption parameters
  */
-function decryptRequest(body, privatePem) {
+export function decryptRequest(body, privatePem) {
   const { encrypted_aes_key, encrypted_flow_data, initial_vector } = body;
 
   // Decrypt the AES key created by the client
