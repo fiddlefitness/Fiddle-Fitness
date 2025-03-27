@@ -16,7 +16,9 @@ const SCREEN_RESPONSES = {
   REGISTRATION: {
     version: "3.0",
     screen: "REGISTRATION",
-    data: {}
+    data: {
+        
+    }
   },
   CONFIRMATION: {
     version: "3.0",
@@ -215,7 +217,7 @@ async function processFlowRequest(decryptedBody) {
           
           // Return success response
           return {
-            ...SCREEN_RESPONSES.SUCCESS,
+            ...SCREEN_RESPONSES.COMPLETE,
             data: {
               extension_message_response: {
                 params: {
