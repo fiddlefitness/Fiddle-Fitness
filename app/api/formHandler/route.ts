@@ -218,14 +218,7 @@ async function processFlowRequest(decryptedBody) {
           // Return success response
           return {
             ...SCREEN_RESPONSES.COMPLETE,
-            data: {
-              extension_message_response: {
-                params: {
-                  flow_token: flow_token,
-                  registration_success: true
-                }
-              }
-            }
+            data: {}
           };
         } catch (error) {
           console.error("Error creating user:", error);
