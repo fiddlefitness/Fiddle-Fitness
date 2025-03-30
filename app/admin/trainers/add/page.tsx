@@ -41,7 +41,7 @@ export default function AddTrainerPage() {
 
       const data = await response.json()
 
-      if (!response.ok) {
+      if (!response.ok) { 
         throw new Error(data.error || 'Failed to create trainer')
       }
 
@@ -105,13 +105,14 @@ export default function AddTrainerPage() {
                 type='email'
                 id='email'
                 name='email'
+                required
                 value={formData.email}
                 onChange={handleChange}
                 className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
               />
-              <p className='mt-1 text-sm text-gray-500'>
-                Optional but recommended for notifications
-              </p>
+                <p className='mt-1 text-sm text-gray-500'>
+                Please provide the Gmail address that will be used for meeting invites
+                </p>
             </div>
 
             <div>

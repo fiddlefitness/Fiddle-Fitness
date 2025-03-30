@@ -1,9 +1,9 @@
 //  /page.js
 'use client'
-import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams, useParams } from 'next/navigation'
-import { format } from 'date-fns'
 import { extractLast10Digits } from '@/lib/formatMobileNumber'
+import { format } from 'date-fns'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 export default function PaymentPage() {
   const params = useParams()
@@ -20,6 +20,7 @@ export default function PaymentPage() {
   const [error, setError] = useState(null)
   const [user, setUser] = useState(null)
   const [event, setEvent] = useState(null)
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false)
 
   const createOrderId = async () => {
     try {
@@ -28,7 +29,6 @@ export default function PaymentPage() {
         headers: {
           'Content-Type': 'application/json',
           'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',
-
         },
         body: JSON.stringify({
           amount: parseFloat(event?.price) * 100,
@@ -49,6 +49,8 @@ export default function PaymentPage() {
       return null
     }
   }
+
+  console.log('eventData', event)
 
   useEffect(() => {
     // Fetch user and event data
@@ -75,10 +77,16 @@ export default function PaymentPage() {
         if (!eventRes.ok) {
           throw new Error('Failed to fetch event data')
         }
+
         const eventData = await eventRes.json()
 
         setUser(userData)
         setEvent(eventData)
+        setAlreadyRegistered(
+          (eventData.registrations || []).some(
+            (r) => r.mobileNumber === userData.mobileNumber
+          )
+        )
       } catch (error) {
         console.error('Error fetching data:', error)
         setError('Failed to load registration details. Please try again.')
@@ -235,6 +243,20 @@ export default function PaymentPage() {
     )
   }
 
+  if (alreadyRegistered) {
+    return (
+      <div className='min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
+        <div className='mt-8 sm:mx-auto sm:w-full sm:max-w-md'>
+          <div className='bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 text-center'>
+            <h2 className='text-xl font-semibold text-green-600 mb-2'>
+              You have already registered for this event
+            </h2>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (!user || !event) {
     return (
       <div className='min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
@@ -382,3 +404,10 @@ export default function PaymentPage() {
     </div>
   )
 }
+
+
+
+
+
+
+

@@ -48,7 +48,7 @@ export async function createUser(request) {
     
     let user;
     
-    console.log(data.age)
+    console.log(data.yearOfBirth)
     
     if (existingUser) {
       // Update existing user if needed
@@ -61,7 +61,7 @@ export async function createUser(request) {
           email: data.email || existingUser.email,
           city: data.city || existingUser.city,
           gender: data.gender || existingUser.gender,
-        //   age: data.age ? parseInt(data.age) : existingUser.age
+          yearOfBirth: data.yearOfBirth || existingUser.yearOfBirth,
         }
       });
     } else {
@@ -73,41 +73,17 @@ export async function createUser(request) {
           city: data.city,
           gender: data.gender,
           mobileNumber: mobileNumber,
-        //   age: data.age ? parseInt(data.age) : null
+          yearOfBirth: data.yearOfBirth,
         }
       });
     }
     
     // Get upcoming events
-    const now = new Date();
-    const upcomingEvents = await prisma.event.findMany({
-      where: {
-        eventDate: {
-          gt: now
-        },
-        // Only include events with registration open
-        OR: [
-          { registrationDeadline: null },
-          { registrationDeadline: { gt: now } }
-        ]
-      },
-      select: {
-        category: true
-      },
-      orderBy: {
-        eventDate: 'asc'
-      }
-    });
     
-    // Extract unique categories from upcoming events
-    const eventCategories = [...new Set(upcomingEvents.map(event => event.category))];
-
-    const formattedCategories = EVENT_CATEGORIES.filter(category => eventCategories.includes(category.value));
     
     // Return the user and upcoming event categories
     return NextResponse.json({
-      user,
-      EventCategories : formattedCategories
+      user
     }, { status: existingUser ? 200 : 201 });
   } catch (error) {
     console.error('Error creating user:', error);
@@ -121,3 +97,5 @@ export async function createUser(request) {
 // Export the handlers with API key middleware
 export const GET = withApiKey(getUsers);
 export const POST = withApiKey(createUser, {requireAuth: false});
+
+

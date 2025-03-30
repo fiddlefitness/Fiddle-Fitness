@@ -1,53 +1,92 @@
 // app/admin/events/[id]/edit/page.js
-'use client';
+'use client'
 
-import { useState, useEffect, use } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds';
+import { useState, useEffect, use } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
 
 // Hardcoded list of fitness categories
 
 export default function EditEventPage({ params }) {
-  const router = useRouter();
-  const { eventId } = use(params);
-  
-  const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [trainers, setTrainers] = useState([]);
-  const [trainersLoading, setTrainersLoading] = useState(true);
-  const [selectedTrainers, setSelectedTrainers] = useState([]);
-  const [error, setError] = useState(null);
-  
+  const router = useRouter()
+  const { eventId } = use(params)
+
+  const [loading, setLoading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [trainers, setTrainers] = useState([])
+  const [trainersLoading, setTrainersLoading] = useState(true)
+  const [selectedTrainers, setSelectedTrainers] = useState([])
+  const [error, setError] = useState(null)
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     category: '',
     eventDate: '',
-    eventTime: '',
+    startTime: '',
+    startPeriod: 'AM',
+    endTime: '',
+    endPeriod: 'PM',
     maxCapacity: 100,
     poolCapacity: 50,
     price: 0,
     registrationDeadline: '',
-  });
+  })
 
-  const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY || ''
+
+
+  const parseEventTime = (timeString : string) => {
+    if (!timeString) return { startTime: '', startPeriod: 'AM', endTime: '', endPeriod: 'PM' };
+    
+    try {
+      // Parse "10:00 AM - 2:00 PM" format
+      const [startPart, endPart] = timeString.split('-').map(part => part.trim());
+      
+      let startTime = '';
+      let startPeriod = 'AM';
+      let endTime = '';
+      let endPeriod = 'PM';
+      
+      // Parse start time
+      if (startPart) {
+        const startMatch = startPart.match(/(\d+:\d+)\s*([APap][Mm])?/);
+        if (startMatch) {
+          startTime = startMatch[1];
+          startPeriod = startMatch[2]?.toUpperCase() || 'AM';
+        }
+      }
+      
+      // Parse end time
+      if (endPart) {
+        const endMatch = endPart.match(/(\d+:\d+)\s*([APap][Mm])?/);
+        if (endMatch) {
+          endTime = endMatch[1];
+          endPeriod = endMatch[2]?.toUpperCase() || 'PM';
+        }
+      }
+      
+      return { startTime, startPeriod, endTime, endPeriod };
+    } catch (error) {
+      console.error('Error parsing event time:', error);
+      return { startTime: '', startPeriod: 'AM', endTime: '', endPeriod: 'PM' };
+    }
+  };
+
 
   // Fetch trainers and event data
   useEffect(() => {
     const fetchInitialData = async () => {
-      await Promise.all([
-        fetchTrainers(),
-        fetchEventData()
-      ]);
-      setInitialLoading(false);
-    };
-    
-    fetchInitialData();
-  }, [eventId]);
+      await Promise.all([fetchTrainers(), fetchEventData()])
+      setInitialLoading(false)
+    }
+
+    fetchInitialData()
+  }, [eventId])
 
   const fetchTrainers = async () => {
-    setTrainersLoading(true);
+    setTrainersLoading(true)
     try {
       const res = await fetch('/api/trainers', {
         method: 'GET',
@@ -55,21 +94,21 @@ export default function EditEventPage({ params }) {
           'Content-Type': 'application/json',
           'X-API-Key': API_KEY,
         },
-      });
+      })
 
       if (!res.ok) {
-        throw new Error('Failed to fetch trainers');
+        throw new Error('Failed to fetch trainers')
       }
 
-      const data = await res.json();
-      setTrainers(data);
+      const data = await res.json()
+      setTrainers(data)
     } catch (error) {
-      console.error('Error fetching trainers:', error);
-      setError('Failed to load trainers. Please try again later.');
+      console.error('Error fetching trainers:', error)
+      setError('Failed to load trainers. Please try again later.')
     } finally {
-      setTrainersLoading(false);
+      setTrainersLoading(false)
     }
-  };
+  }
 
   const fetchEventData = async () => {
     try {
@@ -78,146 +117,175 @@ export default function EditEventPage({ params }) {
           'Content-Type': 'application/json',
           'X-API-Key': API_KEY,
         },
-      });
-      
+      })
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch event');
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch event')
       }
-      
-      const eventData = await response.json();
-      
+
+      const eventData = await response.json()
+
+      const parsedTime = parseEventTime(eventData.eventTime);
+
+      setFormData({
+        title: eventData.title || '',
+        description: eventData.description || '',
+        category: eventData.category || '',
+        eventDate: formattedEventDate,
+        // Replace eventTime with parsed components
+        startTime: parsedTime.startTime,
+        startPeriod: parsedTime.startPeriod,
+        endTime: parsedTime.endTime,
+        endPeriod: parsedTime.endPeriod,
+        maxCapacity: eventData.maxCapacity || 100,
+        poolCapacity: eventData.poolCapacity || 50,
+        price: eventData.price || 0,
+        registrationDeadline: formattedDeadline
+      });
+
+
       // Format dates for form inputs
-      const formattedEventDate = eventData.eventDate 
+      const formattedEventDate = eventData.eventDate
         ? new Date(eventData.eventDate).toISOString().split('T')[0]
-        : '';
-        
+        : ''
+
       const formattedDeadline = eventData.registrationDeadline
         ? new Date(eventData.registrationDeadline).toISOString().split('T')[0]
-        : '';
-      
+        : ''
+
       // Set form data
       setFormData({
         title: eventData.title || '',
         description: eventData.description || '',
         category: eventData.category || '',
         eventDate: formattedEventDate,
-        eventTime: eventData.eventTime || '',
+        startTime: parsedTime.startTime,
+        startPeriod: parsedTime.startPeriod,
+        endTime: parsedTime.endTime,
+        endPeriod: parsedTime.endPeriod,
         maxCapacity: eventData.maxCapacity || 100,
         poolCapacity: eventData.poolCapacity || 50,
         price: eventData.price || 0,
-        registrationDeadline: formattedDeadline
-      });
-      
+        registrationDeadline: formattedDeadline,
+      })
+
       // Set selected trainers
       if (eventData.eventTrainers && eventData.eventTrainers.length > 0) {
-        const trainerIds = eventData.eventTrainers.map(et => et.trainerId);
-        setSelectedTrainers(trainerIds);
+        const trainerIds = eventData.eventTrainers.map(et => et.trainerId)
+        setSelectedTrainers(trainerIds)
       }
     } catch (err) {
-      console.error('Error fetching event:', err);
-      setError(err.message);
+      console.error('Error fetching event:', err)
+      setError(err.message)
     }
-  };
+  }
 
-  const handleChange = (e) => {
-    const { name, value, type } = e.target;
-    
+  const handleChange = e => {
+    const { name, value, type } = e.target
+
     // Handle numeric inputs
     if (type === 'number') {
       setFormData({
         ...formData,
-        [name]: value === '' ? '' : Number(value)
-      });
+        [name]: value === '' ? '' : Number(value),
+      })
     } else {
       setFormData({
         ...formData,
-        [name]: value
-      });
+        [name]: value,
+      })
     }
-    
+
     // Clear error when user starts typing again
     if (error) {
-      setError(null);
+      setError(null)
     }
-  };
+  }
 
-  const handleTrainerSelect = (trainerId) => {
+  const handleTrainerSelect = trainerId => {
     // If trainer is already selected, remove them
     if (selectedTrainers.includes(trainerId)) {
-      setSelectedTrainers(selectedTrainers.filter(id => id !== trainerId));
+      setSelectedTrainers(selectedTrainers.filter(id => id !== trainerId))
     } else {
       // Otherwise add them to selected trainers
-      setSelectedTrainers([...selectedTrainers, trainerId]);
+      setSelectedTrainers([...selectedTrainers, trainerId])
     }
-  };
+  }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
+  const handleSubmit = async e => {
+    e.preventDefault()
+
     // Validate category is selected
     if (!formData.category) {
-      setError('Please select an event category');
-      return;
+      setError('Please select an event category')
+      return
     }
 
     // Check if max capacity to pool capacity ratio requires more trainers
-    const capacityRatio = formData.maxCapacity / formData.poolCapacity;
+    const capacityRatio = formData.maxCapacity / formData.poolCapacity
     // Calculate minimum required trainers based on the capacity ratio
-    const minRequiredTrainers = Math.ceil(capacityRatio);
-    
+    const minRequiredTrainers = Math.ceil(capacityRatio)
+
     if (selectedTrainers.length < minRequiredTrainers) {
-      setError(`Based on your event setup (${formData.maxCapacity} total capacity with ${formData.poolCapacity} per pool), you need at least ${minRequiredTrainers} trainers. Please select ${minRequiredTrainers - selectedTrainers.length} more trainer(s).`);
-      return;
+      setError(
+        `Based on your event setup (${
+          formData.maxCapacity
+        } total capacity with ${
+          formData.poolCapacity
+        } per pool), you need at least ${minRequiredTrainers} trainers. Please select ${
+          minRequiredTrainers - selectedTrainers.length
+        } more trainer(s).`,
+      )
+      return
     }
 
     if (selectedTrainers.length === 0) {
-      setError('Please select at least one trainer for the event.');
-      return;
+      setError('Please select at least one trainer for the event.')
+      return
     }
-    
-    setLoading(true);
-    setError(null);
-    
+
+    setLoading(true)
+    setError(null)
+
     try {
       // Combine form data with selected trainers
       const eventData = {
         ...formData,
         trainers: selectedTrainers,
-      };
-      
+      }
+
       const response = await fetch(`/api/events/${eventId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'X-API-Key': API_KEY,
         },
-        body: JSON.stringify(eventData)
-      });
-      
-      const data = await response.json();
-      
+        body: JSON.stringify(eventData),
+      })
+
+      const data = await response.json()
+
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to update event');
+        throw new Error(data.error || 'Failed to update event')
       }
-      
-      console.log('Event updated:', data);
-      router.push(`/admin/events/${eventId}`);
-      
+
+      console.log('Event updated:', data)
+      router.push(`/admin/events/${eventId}`)
     } catch (err) {
-      console.error('Error updating event:', err);
-      setError(err.message || 'Error updating event. Please try again.');
+      console.error('Error updating event:', err)
+      setError(err.message || 'Error updating event. Please try again.')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   if (initialLoading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      <div className='flex justify-center items-center h-64'>
+        <div className='animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500'></div>
       </div>
-    );
+    )
   }
 
   return (
@@ -275,7 +343,7 @@ export default function EditEventPage({ params }) {
                 onChange={handleChange}
                 className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
               >
-                <option value="">-- Select Event Category --</option>
+                <option value=''>-- Select Event Category --</option>
                 {EVENT_CATEGORIES.map(category => (
                   <option key={category.value} value={category.value}>
                     {category.label}
@@ -309,16 +377,62 @@ export default function EditEventPage({ params }) {
               >
                 Event Time*
               </label>
-              <input
-                type='text'
-                id='eventTime'
-                name='eventTime'
-                required
-                placeholder='e.g. 10:00 - 14:00'
-                value={formData.eventTime}
-                onChange={handleChange}
-                className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
-              />
+              <div className='grid grid-cols-7 gap-2 items-center'>
+                <div className='col-span-2'>
+                  <input
+                    type='text'
+                    id='startTime'
+                    name='startTime'
+                    required
+                    placeholder='Start time'
+                    value={formData.startTime}
+                    onChange={handleChange}
+                    className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
+                  />
+                </div>
+                <div className='col-span-1'>
+                  <select
+                    id='startPeriod'
+                    name='startPeriod'
+                    required
+                    value={formData.startPeriod}
+                    onChange={handleChange}
+                    className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
+                  >
+                    <option value='AM'>AM</option>
+                    <option value='PM'>PM</option>
+                  </select>
+                </div>
+                <div className='col-span-1 text-center'>to</div>
+                <div className='col-span-2'>
+                  <input
+                    type='text'
+                    id='endTime'
+                    name='endTime'
+                    required
+                    placeholder='End time'
+                    value={formData.endTime}
+                    onChange={handleChange}
+                    className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
+                  />
+                </div>
+                <div className='col-span-1'>
+                  <select
+                    id='endPeriod'
+                    name='endPeriod'
+                    required
+                    value={formData.endPeriod}
+                    onChange={handleChange}
+                    className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
+                  >
+                    <option value='AM'>AM</option>
+                    <option value='PM'>PM</option>
+                  </select>
+                </div>
+              </div>
+              <p className='mt-1 text-sm text-gray-500'>
+                Format: HH:MM (e.g. 10:00 AM - 2:00 PM)
+              </p>
             </div>
 
             <div>
@@ -536,5 +650,5 @@ export default function EditEventPage({ params }) {
         </form>
       </div>
     </div>
-  );
+  )
 }

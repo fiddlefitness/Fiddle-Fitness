@@ -7,20 +7,22 @@ import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
 
 // Hardcoded list of fitness categories
 
-
 export default function AddEventPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [trainers, setTrainers] = useState([])
   const [trainersLoading, setTrainersLoading] = useState(true)
   const [selectedTrainers, setSelectedTrainers] = useState([])
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<null | string>(null)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    category: '',  // Added category field
+    category: '', // Added category field
     eventDate: '',
-    eventTime: '',
+    startTime: '',
+    startPeriod: 'AM',
+    endTime: '',
+    endPeriod: 'PM',
     maxCapacity: 100,
     poolCapacity: 50, // Default value for pool capacity
     price: 0,
@@ -31,6 +33,10 @@ export default function AddEventPage() {
     // Fetch trainers from API
     fetchTrainers()
   }, [])
+
+  const formatTimeForSubmission = () => {
+    return `${formData.startTime} ${formData.startPeriod} - ${formData.endTime} ${formData.endPeriod}`;
+  };
 
   const fetchTrainers = async () => {
     setTrainersLoading(true)
@@ -82,18 +88,26 @@ export default function AddEventPage() {
 
     // Validate category is selected
     if (!formData.category) {
-      setError('Please select an event category');
-      return;
+      setError('Please select an event category')
+      return
     }
 
     // Check if max capacity to pool capacity ratio requires more trainers
-    const capacityRatio = formData.maxCapacity / formData.poolCapacity;
+    const capacityRatio = formData.maxCapacity / formData.poolCapacity
     // Calculate minimum required trainers based on the capacity ratio
-    const minRequiredTrainers = Math.ceil(capacityRatio);
-    
+    const minRequiredTrainers = Math.ceil(capacityRatio)
+
     if (selectedTrainers.length < minRequiredTrainers) {
-      setError(`Based on your event setup (${formData.maxCapacity} total capacity with ${formData.poolCapacity} per pool), you need at least ${minRequiredTrainers} trainers. Please select ${minRequiredTrainers - selectedTrainers.length} more trainer(s).`);
-      return;
+      setError(
+        `Based on your event setup (${
+          formData.maxCapacity
+        } total capacity with ${
+          formData.poolCapacity
+        } per pool), you need at least ${minRequiredTrainers} trainers. Please select ${
+          minRequiredTrainers - selectedTrainers.length
+        } more trainer(s).`,
+      )
+      return
     }
 
     if (selectedTrainers.length === 0) {
@@ -106,16 +120,19 @@ export default function AddEventPage() {
 
     try {
       // Combine form data with selected trainers
+      const { startTime, endTime, startPeriod, endPeriod, ...rest } = formData;
       const eventData = {
-        ...formData,
+        ...rest,
+        eventTime: formatTimeForSubmission(),
         trainers: selectedTrainers,
       }
 
       const response = await fetch('/api/events', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json',
+        headers: {
+          'Content-Type': 'application/json',
           'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',
-         },
+        },
         body: JSON.stringify(eventData),
       })
 
@@ -190,7 +207,7 @@ export default function AddEventPage() {
                 onChange={handleChange}
                 className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
               >
-                <option value="">-- Select Event Category --</option>
+                <option value=''>-- Select Event Category --</option>
                 {EVENT_CATEGORIES.map(category => (
                   <option key={category.value} value={category.value}>
                     {category.label}
@@ -224,16 +241,62 @@ export default function AddEventPage() {
               >
                 Event Time*
               </label>
-              <input
-                type='text'
-                id='eventTime'
-                name='eventTime'
-                required
-                placeholder='e.g. 10:00 - 14:00'
-                value={formData.eventTime}
-                onChange={handleChange}
-                className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
-              />
+              <div className='grid grid-cols-7 gap-2 items-center'>
+                <div className='col-span-2'>
+                  <input
+                    type='text'
+                    id='startTime'
+                    name='startTime'
+                    required
+                    placeholder='Start time'
+                    value={formData.startTime}
+                    onChange={handleChange}
+                    className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
+                  />
+                </div>
+                <div className='col-span-1'>
+                  <select
+                    id='startPeriod'
+                    name='startPeriod'
+                    required
+                    value={formData.startPeriod}
+                    onChange={handleChange}
+                    className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
+                  >
+                    <option value='AM'>AM</option>
+                    <option value='PM'>PM</option>
+                  </select>
+                </div>
+                <div className='col-span-1 text-center'>to</div>
+                <div className='col-span-2'>
+                  <input
+                    type='text'
+                    id='endTime'
+                    name='endTime'
+                    required
+                    placeholder='End time'
+                    value={formData.endTime}
+                    onChange={handleChange}
+                    className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
+                  />
+                </div>
+                <div className='col-span-1'>
+                  <select
+                    id='endPeriod'
+                    name='endPeriod'
+                    required
+                    value={formData.endPeriod}
+                    onChange={handleChange}
+                    className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
+                  >
+                    <option value='AM'>AM</option>
+                    <option value='PM'>PM</option>
+                  </select>
+                </div>
+              </div>
+              <p className='mt-1 text-sm text-gray-500'>
+                Format: HH:MM (e.g. 10:00 AM - 2:00 PM)
+              </p>
             </div>
 
             <div>

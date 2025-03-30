@@ -10,59 +10,65 @@ generator client {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  name          String
-  email         String
-  city          String?
-  gender        String?
-  mobileNumber  String   @unique
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id String @id @default(cuid())
+  name String
+  email String
+  city String?
+  gender String?
+  mobileNumber String @unique
+  yearOfBirth String ? 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   
+  // WhatsApp Bot Conversation State
+  conversationState String? @default("idle")
+  lastInteraction DateTime?
+  contextData Json? // For storing context-specific data during conversation
+
   // Relationships
-  registeredEvents    EventRegistration[] 
-  completedEvents     CompletedEvent[]
-  poolAttendees       PoolAttendee[]
-  payments            Payment[]
-  paymentOrders       PaymentOrder[]
+  registeredEvents EventRegistration[]
+  completedEvents CompletedEvent[]
+  poolAttendees PoolAttendee[]
+  payments Payment[]
+  paymentOrders PaymentOrder[]
 }
 
 model Event {
-  id            String   @id @default(cuid())
-  title         String  
-  description   String?
-  eventDate     DateTime
-  eventTime     String
-  location      String?
-  category      String
-  price         Float?   @default(0)
-  maxCapacity   Int      @default(100)
-  poolCapacity  Int      @default(100)  // Added pool capacity field
+  id                   String    @id @default(cuid())
+  title                String
+  description          String?
+  eventDate            DateTime
+  eventTime            String
+  location             String?
+  category             String
+  price                Float?    @default(0)
+  maxCapacity          Int       @default(100)
+  poolCapacity         Int       @default(100) // Added pool capacity field
   registrationDeadline DateTime?
-  poolsAssigned Boolean  @default(false)
-  notificationSent Boolean @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+  poolsAssigned        Boolean   @default(false)
+  notificationSent     Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
   // Relationships
-  registrations  EventRegistration[]
-  completions    CompletedEvent[]
-  eventTrainers  EventTrainer[]
-  pools          Pool[]
-  paymentOrders  PaymentOrder[]
+  registrations EventRegistration[]
+  completions   CompletedEvent[]
+  eventTrainers EventTrainer[]
+  pools         Pool[]
+  paymentOrders PaymentOrder[]
 }
 
 model Trainer {
-  id            String   @id @default(cuid())
-  name          String
-  email         String?
-  mobileNumber  String   @unique
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+  id           String   @id @default(cuid())
+  name         String
+  email        String?
+  mobileNumber String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
   // Relationships
-  events        EventTrainer[]
-  pools         Pool[]
+  events EventTrainer[]
+  pools  Pool[]
 }
 
 // Junction table for many-to-many relationship between Event and User (registered)
@@ -75,19 +81,19 @@ model EventRegistration {
   payment   Payment? @relation(fields: [paymentId], references: [id])
   paymentId String?
   createdAt DateTime @default(now())
-  
+
   @@unique([userId, eventId])
 }
 
 // Junction table for many-to-many relationship between Event and User (completed)
 model CompletedEvent {
-  id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
-  event     Event    @relation(fields: [eventId], references: [id])
-  eventId   String
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  event       Event    @relation(fields: [eventId], references: [id])
+  eventId     String
   completedAt DateTime @default(now())
-  
+
   @@unique([userId, eventId])
 }
 
@@ -99,38 +105,38 @@ model EventTrainer {
   event     Event    @relation(fields: [eventId], references: [id])
   eventId   String
   createdAt DateTime @default(now())
-  
+
   @@unique([trainerId, eventId])
 }
 
 // Pool model for subdivisions within an event
 model Pool {
-  id        String   @id @default(cuid())
-  name      String?
-  meetLink  String?
-  capacity  Int      @default(100)
-  isActive  Boolean  @default(false)
+  id       String  @id @default(cuid())
+  name     String?
+  meetLink String?
+  capacity Int     @default(100)
+  isActive Boolean @default(false)
 
   // Use onDelete: Cascade to automatically delete pools when the event is deleted
-  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  eventId   String
-  
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId String
+
   // Use onDelete: Cascade to automatically delete associated PoolAttendee
-  trainer   Trainer? @relation(fields: [trainerId], references: [id])
+  trainer   Trainer?       @relation(fields: [trainerId], references: [id])
   trainerId String?
   attendees PoolAttendee[]
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 // Junction table for many-to-many relationship between Pool and User (attendees)
 model PoolAttendee {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Use onDelete: Cascade to automatically delete attendees when the pool is deleted
-  pool      Pool     @relation(fields: [poolId], references: [id], onDelete: Cascade)
-  poolId    String
+  pool   Pool   @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  poolId String
 
   user      User     @relation(fields: [userId], references: [id])
   userId    String
@@ -142,37 +148,38 @@ model PoolAttendee {
 
 // Payment model to track payment transactions
 model Payment {
-  id            String   @id @default(cuid())
+  id            String  @id @default(cuid())
   amount        Float
-  currency      String   @default("INR")
-  paymentId     String?  @unique // Razorpay payment ID
-  orderId       String?  // Razorpay order ID
-  status        String   // pending, completed, failed, refunded
-  paymentMethod String?  // card, upi, netbanking, etc.
-  
+  currency      String  @default("INR")
+  paymentId     String? @unique // Razorpay payment ID
+  orderId       String? // Razorpay order ID
+  status        String // pending, completed, failed, refunded
+  paymentMethod String? // card, upi, netbanking, etc.
+  invoiceUrl   String? // URL to the invoice generated for the payment
+
   // Relationships
-  user          User     @relation(fields: [userId], references: [id])
+  user          User                @relation(fields: [userId], references: [id])
   userId        String
   registrations EventRegistration[]
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // PaymentOrder model to track Razorpay order creation
 model PaymentOrder {
-  id            String   @id @default(cuid())
-  orderId       String   @unique // Razorpay order ID
-  amount        Float
-  currency      String   @default("INR")
-  status        String   // created, paid, cancelled
-  
+  id       String @id @default(cuid())
+  orderId  String @unique // Razorpay order ID
+  amount   Float
+  currency String @default("INR")
+  status   String // created, paid, cancelled
+
   // Relationships
-  user          User     @relation(fields: [userId], references: [id])
-  userId        String
-  event         Event    @relation(fields: [eventId], references: [id])
-  eventId       String
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  user    User   @relation(fields: [userId], references: [id])
+  userId  String
+  event   Event  @relation(fields: [eventId], references: [id])
+  eventId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
