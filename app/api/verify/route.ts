@@ -248,7 +248,7 @@ async function sendTextMessage(phoneNumber: string, message: string) {
   }
 }
 
-// @ts-expect-error
+
 const createInvoice = async (
   user,
   event,
@@ -259,7 +259,7 @@ const createInvoice = async (
   try {
     const response = await axios.post(
       'https://api.razorpay.com/v1/invoices',
-      {
+      {  
         type: 'invoice',
         description: `Invoice for ${event.title}`,
         partial_payment: false,

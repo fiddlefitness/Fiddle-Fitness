@@ -31,6 +31,7 @@ model User {
   poolAttendees PoolAttendee[]
   payments Payment[]
   paymentOrders PaymentOrder[]
+  invoices Invoice[]
 }
 
 model Event {
@@ -56,6 +57,7 @@ model Event {
   eventTrainers EventTrainer[]
   pools         Pool[]
   paymentOrders PaymentOrder[]
+  invoices      Invoice[]
 }
 
 model Trainer {
@@ -141,6 +143,7 @@ model PoolAttendee {
   user      User     @relation(fields: [userId], references: [id])
   userId    String
   notified  Boolean  @default(false)
+  meetLink  String?  // Unique meeting link for each attendee
   createdAt DateTime @default(now())
 
   @@unique([poolId, userId])
@@ -155,15 +158,38 @@ model Payment {
   orderId       String? // Razorpay order ID
   status        String // pending, completed, failed, refunded
   paymentMethod String? // card, upi, netbanking, etc.
-  invoiceUrl   String? // URL to the invoice generated for the payment
+  invoiceUrl    String? // URL to the invoice generated for the payment
 
   // Relationships
   user          User                @relation(fields: [userId], references: [id])
   userId        String
   registrations EventRegistration[]
+  invoice       Invoice?            @relation(fields: [invoiceId], references: [id])
+  invoiceId     String?             @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Invoice model to track payment invoices
+model Invoice {
+  id              String   @id @default(cuid())
+  invoiceId       String   @unique // Razorpay invoice ID
+  amount          Float
+  currency        String   @default("INR")
+  status          String   // created, paid, cancelled
+  razorpayInvoiceId String @unique // Razorpay's invoice ID
+  invoiceUrl      String   // URL to view the invoice
+
+  // Relationships
+  user            User     @relation(fields: [userId], references: [id])
+  userId          String
+  event           Event    @relation(fields: [eventId], references: [id])
+  eventId         String
+  payment         Payment?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 // PaymentOrder model to track Razorpay order creation

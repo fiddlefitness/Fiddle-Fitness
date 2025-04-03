@@ -106,7 +106,7 @@ async function postEvent(request) {
       // Create the event
       const event = await prisma.event.create({
         data: {
-          title: data.title,
+          title: data.title.trim(),
           description: data.description,
           category: data.category, // Added category field
           eventDate: new Date(data.eventDate),

@@ -10,7 +10,7 @@ const WHATSAPP_TOKEN =
 const WHATSAPP_PHONE_NUMBER_ID =
   process.env.WHATSAPP_PHONE_NUMBER_ID || '623332544193238'
 
-// Function to send a simple text message
+// Function to send a sple text message
 async function testVideoMessages() {
   try {
     console.log('Starting video compatibility tests...');

@@ -1,273 +1,143 @@
 //  /page.js
-'use client'
 import { extractLast10Digits } from '@/lib/formatMobileNumber'
-import { format } from 'date-fns'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import PaymentForm from './PaymentForm'
 
-export default function PaymentPage() {
-  const params = useParams()
-  const eventId = params.eventId
-  const mobileNumberw = params.mobileNumber
-  const searchParams = useSearchParams()
-  const paymentRef = searchParams.get('ref')
-  const router = useRouter()
-
-  const mobileNumber = extractLast10Digits(mobileNumberw)
-
-  const [loading, setLoading] = useState(true)
-  const [paymentLoading, setPaymentLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [user, setUser] = useState(null)
-  const [event, setEvent] = useState(null)
-  const [alreadyRegistered, setAlreadyRegistered] = useState(false)
-
-  const createOrderId = async () => {
-    try {
-      const response = await fetch('/api/order', {
-        method: 'POST',
+async function getEventData(eventId: string) {
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/events/${eventId}`,
+      {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',
         },
-        body: JSON.stringify({
-          amount: parseFloat(event?.price) * 100,
-          eventId: eventId,
-          mobileNumber: mobileNumber,
-        }),
+        cache: 'no-store',
+      },
+    )
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}))
+      console.error('Event API Error:', {
+        status: res.status,
+        statusText: res.statusText,
+        errorData,
       })
-
-      if (!response.ok) {
-        throw new Error('Network response was not ok')
-      }
-
-      const data = await response.json()
-      return data.orderId
-    } catch (error) {
-      console.error('There was a problem with your fetch operation:', error)
-      setError('Failed to create payment order. Please try again.')
-      return null
+      throw new Error(`Failed to fetch event data: ${res.status} ${res.statusText}`)
     }
+
+    return res.json()
+  } catch (error) {
+    console.error('Event Data Fetch Error:', error)
+    throw error
   }
+}
 
-  console.log('eventData', event)
+async function getUserData(mobileNumber: string) {
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/users/${mobileNumber}`,
+      {
+        cache: 'no-store',
+      },
+    )
 
-  useEffect(() => {
-    // Fetch user and event data
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
-
-      try {
-        // Fetch user data
-        const userRes = await fetch(`/api/users/${mobileNumber}`)
-        if (!userRes.ok) {
-          throw new Error('Failed to fetch user data')
-        }
-        const userData = await userRes.json()
-
-        // Fetch event data
-        const eventRes = await fetch(`/api/events/${eventId}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',
-          },
-        })
-        if (!eventRes.ok) {
-          throw new Error('Failed to fetch event data')
-        }
-
-        const eventData = await eventRes.json()
-
-        setUser(userData)
-        setEvent(eventData)
-        setAlreadyRegistered(
-          (eventData.registrations || []).some(
-            (r) => r.mobileNumber === userData.mobileNumber
-          )
-        )
-      } catch (error) {
-        console.error('Error fetching data:', error)
-        setError('Failed to load registration details. Please try again.')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    if (eventId && mobileNumber) {
-      fetchData()
-    }
-  }, [eventId, mobileNumber])
-
-  const handlePayment = async () => {
-    setPaymentLoading(true)
-
-    try {
-      // If the event is free, register directly without payment
-      if (event.price === 0 || event.price === null) {
-        const registrationRes = await fetch('/api/users/register-event', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            eventId: eventId,
-            mobileNumber: mobileNumber,
-            // No payment verification needed for free events
-            freeEvent: true,
-          }),
-        })
-
-        if (!registrationRes.ok) {
-          const errorData = await registrationRes.json()
-          throw new Error(errorData.error || 'Failed to register for event')
-        }
-
-        const registrationData = await registrationRes.json()
-        router.push(
-          `/registration-success?eventId=${eventId}&regId=${registrationData.registration.id}`,
-        )
-        return
-      }
-
-      // For paid events, create order and process payment
-      const orderId = await createOrderId()
-      if (!orderId) {
-        setPaymentLoading(false)
-        return
-      }
-
-      const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: parseFloat(event.price) * 100,
-        currency: 'INR',
-        name: event.title,
-        description: `Registration for ${event.title}`,
-        order_id: orderId,
-        handler: async function (response) {
-          try {
-            const verificationData = {
-              orderCreationId: orderId,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpayOrderId: response.razorpay_order_id,
-              razorpaySignature: response.razorpay_signature,
-              eventId: eventId,
-              mobileNumber: mobileNumber,
-              amount: parseFloat(event.price) * 100,
-            }
-
-            const result = await fetch('/api/verify', {
-              method: 'POST',
-              body: JSON.stringify(verificationData),
-              headers: { 'Content-Type': 'application/json' },
-            })
-
-            const res = await result.json()
-
-            if (res.isOk) {
-              // Payment verified successfully, redirect to success page
-              router.push(
-                `/registration-success?eventId=${eventId}&paymentId=${response.razorpay_payment_id}`,
-              )
-            } else {
-              setError(res.message || 'Payment verification failed')
-              setPaymentLoading(false)
-            }
-          } catch (error) {
-            console.error('Payment verification error:', error)
-            setError(
-              'An error occurred during payment verification. Please contact support.',
-            )
-            setPaymentLoading(false)
-          }
-        },
-        prefill: {
-          name: user.name,
-          email: user.email,
-          contact: user.mobileNumber,
-        },
-        theme: {
-          color: '#3399cc',
-        },
-        modal: {
-          ondismiss: function () {
-            setPaymentLoading(false)
-          },
-        },
-      }
-
-      const paymentObject = new window.Razorpay(options)
-      paymentObject.on('payment.failed', function (response) {
-        setError(response.error.description || 'Payment failed')
-        setPaymentLoading(false)
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}))
+      console.error('User API Error:', {
+        status: res.status,
+        statusText: res.statusText,
+        errorData,
       })
-
-      paymentObject.open()
-    } catch (error) {
-      console.error('Payment initiation error:', error)
-      setError('Failed to initiate payment. Please try again.')
-      setPaymentLoading(false)
+      throw new Error(`Failed to fetch user data: ${res.status} ${res.statusText}`)
     }
-  }
 
-  if (loading) {
-    return (
-      <div className='min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
-        <div className='mt-8 sm:mx-auto sm:w-full sm:max-w-md'>
-          <div className='bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10'>
-            <div className='text-center'>
-              <p>Loading payment details...</p>
+    return res.json()
+  } catch (error) {
+    console.error('User Data Fetch Error:', error)
+    throw error
+  }
+}
+
+export default async function PaymentPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ eventId: string; mobileNumber: string }>
+  searchParams: Promise<{ ref?: string }>
+}) {
+  const { eventId, mobileNumber } = await params
+  const { ref: paymentRef } = await searchParams
+  const cleanMobileNumber = extractLast10Digits(mobileNumber)
+
+  try {
+    console.log('Fetching data for:', { eventId, cleanMobileNumber })
+    const [eventData, userData] = await Promise.all([
+      getEventData(eventId),
+      getUserData(cleanMobileNumber),
+    ])
+
+    console.log('Event Data:', eventData)
+    console.log('User Data:', userData)
+
+    const isAlreadyRegistered = (eventData.registrations || []).some(
+      (r: { mobileNumber: string }) => r.mobileNumber === userData.mobileNumber,
+    )
+
+    if (isAlreadyRegistered) {
+      return (
+        <div className='min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
+          <div className='mt-8 sm:mx-auto sm:w-full sm:max-w-md'>
+            <div className='bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 text-center'>
+              <h2 className='text-xl font-semibold text-green-600 mb-2'>
+                You have already registered for this event
+              </h2>
             </div>
           </div>
         </div>
-      </div>
-    )
-  }
+      )
+    }
 
-  if (error) {
-    return (
-      <div className='min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
-        <div className='mt-8 sm:mx-auto sm:w-full sm:max-w-md'>
-          <div className='bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10'>
-            <div className='text-center'>
-              <h2 className='text-xl font-semibold text-red-600 mb-2'>Error</h2>
-              <p className='text-gray-700'>{error}</p>
-              <button className='mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'>
-                Something went wrong: Please try again after some time
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (alreadyRegistered) {
+  if (eventData.isDeadlinePassed) {
     return (
       <div className='min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
         <div className='mt-8 sm:mx-auto sm:w-full sm:max-w-md'>
           <div className='bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 text-center'>
-            <h2 className='text-xl font-semibold text-green-600 mb-2'>
-              You have already registered for this event
+            <h2 className='text-xl font-semibold text-red-600 mb-2'>
+              Registration Deadline Passed
             </h2>
+            <p className='text-gray-700'>
+              We're sorry, but the registration deadline for this event has
+              passed. You cannot register for this event anymore.
+            </p>
           </div>
         </div>
       </div>
     )
   }
 
-  if (!user || !event) {
+    return (
+      <PaymentForm
+        event={eventData}
+        user={userData}
+        eventId={eventId}
+        mobileNumber={cleanMobileNumber}
+        paymentRef={paymentRef}
+      />
+    )
+  } catch (error) {
+    console.error('Payment Page Error:', error)
     return (
       <div className='min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
         <div className='mt-8 sm:mx-auto sm:w-full sm:max-w-md'>
           <div className='bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10'>
             <div className='text-center'>
               <h2 className='text-xl font-semibold text-red-600 mb-2'>
-                Data Not Found
+                Error Loading Data
               </h2>
               <p className='text-gray-700'>
-                The registration information could not be found.
+                We couldn't load the registration information. Please try again
+                later.
               </p>
             </div>
           </div>
@@ -275,139 +145,4 @@ export default function PaymentPage() {
       </div>
     )
   }
-
-  return (
-    <div className='min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
-      <div className='mt-8 sm:mx-auto sm:w-full sm:max-w-md'>
-        <div className='bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10'>
-          <div className='text-center mb-6'>
-            <h1 className='text-2xl font-bold text-gray-900'>
-              Complete Your Registration
-            </h1>
-            {paymentRef && (
-              <p className='text-gray-600 mt-2'>
-                Payment reference: {paymentRef}
-              </p>
-            )}
-          </div>
-
-          <div className='border-t border-b border-gray-200 py-4 mb-6'>
-            <h2 className='text-lg font-semibold text-gray-900 mb-3'>
-              Event Details
-            </h2>
-            <div className='space-y-2'>
-              <p className='text-gray-900 font-medium'>{event.title}</p>
-              <p className='text-gray-600'>
-                {format(new Date(event.eventDate), 'MMMM dd, yyyy')} •{' '}
-                {event.eventTime}
-              </p>
-
-              {event.location && (
-                <p className='text-gray-600'>
-                  <span className='font-medium'>Location:</span>{' '}
-                  {event.location}
-                </p>
-              )}
-
-              <div className='mt-3'>
-                <p className='text-gray-700 font-medium'>Trainers:</p>
-                <p className='text-gray-600'>
-                  {event.trainers && event.trainers.length > 0
-                    ? event.trainers.map(t => t.name).join(', ')
-                    : 'To be announced'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className='border-b border-gray-200 py-4 mb-6'>
-            <h2 className='text-lg font-semibold text-gray-900 mb-3'>
-              Your Details
-            </h2>
-            <div className='grid grid-cols-2 gap-4'>
-              <div>
-                <p className='text-sm text-gray-500'>Name</p>
-                <p className='text-gray-900'>{user.name}</p>
-              </div>
-              <div>
-                <p className='text-sm text-gray-500'>Mobile</p>
-                <p className='text-gray-900'>{user.mobileNumber}</p>
-              </div>
-              <div>
-                <p className='text-sm text-gray-500'>Email</p>
-                <p className='text-gray-900'>{user.email || 'Not provided'}</p>
-              </div>
-              {user.city && (
-                <div>
-                  <p className='text-sm text-gray-500'>City</p>
-                  <p className='text-gray-900'>{user.city}</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className='mb-6'>
-            <h2 className='text-lg font-semibold text-gray-900 mb-3'>
-              Payment Summary
-            </h2>
-            <div className='flex justify-between items-center'>
-              <span className='text-gray-600'>Event Fee</span>
-              <span className='text-gray-900'>₹{event.price || 0}</span>
-            </div>
-            {/* Add any additional fees or taxes here if needed */}
-            <div className='flex justify-between items-center font-medium mt-3 pt-3 border-t border-gray-200'>
-              <span className='text-gray-900'>Total</span>
-              <span className='text-gray-900'>₹{event.price || 0}</span>
-            </div>
-          </div>
-
-          {/* If price is 0, show "Complete Registration" instead of payment button */}
-          {event.price === 0 || event.price === null ? (
-            <div>
-              <button
-                onClick={handlePayment}
-                disabled={paymentLoading}
-                className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
-                  paymentLoading ? 'opacity-70 cursor-not-allowed' : ''
-                }`}
-              >
-                {paymentLoading ? 'Processing...' : 'Complete Registration'}
-              </button>
-            </div>
-          ) : (
-            <div>
-              <button
-                onClick={handlePayment}
-                disabled={paymentLoading}
-                className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
-                  paymentLoading ? 'opacity-70 cursor-not-allowed' : ''
-                }`}
-              >
-                {paymentLoading
-                  ? 'Processing Payment...'
-                  : `Pay ₹${event.price}`}
-              </button>
-              <p className='text-xs text-gray-500 mt-2 text-center'>
-                By clicking this button, you agree to our Terms of Service and
-                Privacy Policy.
-              </p>
-            </div>
-          )}
-
-          {error && (
-            <div className='mt-4 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md'>
-              {error}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
 }
-
-
-
-
-
-
-

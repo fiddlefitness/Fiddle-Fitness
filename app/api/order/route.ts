@@ -1,9 +1,9 @@
-// app/api/order/route.js
+// app/api/order/route.ts
+import { withApiKey } from '@/lib/authMiddleware';
+import { extractLast10Digits } from '@/lib/formatMobileNumber';
+import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
-import { prisma } from '@/lib/prisma';
-import { extractLast10Digits } from '@/lib/formatMobileNumber';
-import { withApiKey } from '@/lib/authMiddleware';
 
 async function postOrder(request) {
   try {
