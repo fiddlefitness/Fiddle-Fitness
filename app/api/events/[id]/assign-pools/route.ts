@@ -39,15 +39,15 @@ async function assignPools(request: Request, { params }: { params: RequestParams
     const registrationDeadlinePassed =
       event.registrationDeadline && new Date(event.registrationDeadline) < now
 
-    if (!registrationDeadlinePassed) {
-      return NextResponse.json(
-        {
-          error:
-            'Registration deadline has not passed yet. Pools cannot be assigned until registration closes.',
-        },
-        { status: 400 },
-      )
-    }
+    // if (!registrationDeadlinePassed) {
+    //   return NextResponse.json(
+    //     {
+    //       error:
+    //         'Registration deadline has not passed yet. Pools cannot be assigned until registration closes.',
+    //     },
+    //     { status: 400 },
+    //   )
+    // }
 
     // Check if we already have pools assigned
     if (event.poolsAssigned && event.pools.length > 0) {
@@ -140,23 +140,30 @@ async function assignPools(request: Request, { params }: { params: RequestParams
       // Combine all participant emails
       const allParticipantEmails = [...userEmails, ...trainerEmails]
 
-      if (allParticipantEmails.length === 0) {
-        return NextResponse.json(
-          { error: 'No participants found for this event' },
-          { status: 400 },
-        )
-      }
+      // Create a map of email to full name
+      const userNames: Record<string, string> = {}
+      registeredUsers.forEach(reg => {
+        if (reg.user.email) {
+          userNames[reg.user.email] = reg.user.name
+        }
+      })
+      trainers.forEach(trainer => {
+        if (trainer.email) {
+          userNames[trainer.email] = trainer.name
+        }
+      })
 
       // Create Zoom meeting with all participants
       let meetingData = null
-      if (allParticipantEmails && allParticipantEmails.length > 0) {
+      if (allParticipantEmails.length > 0) {
         try {
           meetingData = await createZoomMeeting(
             event.title,
             meetingStartTime.toISOString(),
             duration,
             allParticipantEmails.filter((email): email is string => email !== null),
-            userEmails[0] // Use first user's email as host for now
+            userEmails[0], // Use first user's email as host for now
+            userNames, // Pass the user names map
           )
 
           if (!meetingData || !meetingData.meetingUrl) {
@@ -218,7 +225,18 @@ async function assignPools(request: Request, { params }: { params: RequestParams
         if (userMeetLink) {
           await sendTextMessage(
             registration.user.mobileNumber,
-            `You have been assigned to ${pool.name} for ${event.title}. Your unique meeting link is: ${userMeetLink}`,
+            `🎉 Yay! Your event is ready.\n\n` +
+            `Dear ${registration.user.name},\n\n` +
+            `Event Details:\n` +
+            `Event: ${event.title}\n` + 
+            `Date: ${new Date(event.eventDate).toLocaleDateString()}\n` +
+            `Time: ${event.eventTime}\n\n` +
+            `You are assigned to ${pool.name}. Please join the Zoom meeting via:\n${userMeetLink}\n\n` +
+            `For seamless access, please:\n` +
+            `• Use the email that was used for registration\n` +
+            `• Join a few minutes prior to the start\n` +
+            `• Ensure your Zoom display name matches your registration name\n\n` +
+            `We look forward to your participation!`
           )
         }
       }
@@ -229,7 +247,19 @@ async function assignPools(request: Request, { params }: { params: RequestParams
         if (trainerMeetLink) {
           await sendTextMessage(
             trainer.mobileNumber,
-            `You have been assigned to ${pool.name} for ${event.title}. Your unique meeting link is: ${trainerMeetLink}`,
+            `🎓 Trainer Assignment Confirmation\n\n` +
+            `Dear ${trainer.name},\n\n` +
+            `You have been assigned to conduct the session for:\n` +
+            `Event: ${event.title}\n` +
+            `Pool: ${pool.name}\n` +
+            `Date: ${new Date(event.eventDate).toLocaleDateString()}\n` +
+            `Time: ${event.eventTime}\n\n` +
+            `Your Zoom meeting link: ${trainerMeetLink}\n\n` +
+            `Please:\n` +
+            `• Join 10 minutes before the session start time\n` + 
+            `• Ensure your Zoom display name matches your trainer profile\n` +
+            `• Have your training materials ready\n\n` +
+            `Thank you for conducting this session!`
           )
         }
       }

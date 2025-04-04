@@ -92,8 +92,8 @@ async function getEvent(request, { params }) {
       registrations,
       pools,
       registeredUsers: registrations.length,
-      isPast: new Date(event.eventDate) < now,
-      isDeadlinePassed: event.registrationDeadline ? new Date(event.registrationDeadline) < now : false
+      isPast: new Date(event.eventDate).getTime() < now.getTime(),
+      isDeadlinePassed: event.registrationDeadline ? new Date(event.registrationDeadline).setHours(23, 59, 59, 999) < now.getTime() : false
     };
     
     return NextResponse.json(formattedEvent);

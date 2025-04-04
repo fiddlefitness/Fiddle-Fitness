@@ -66,6 +66,7 @@ export async function createZoomMeeting(
   duration: number,
   participants: string[],
   hostEmail: string,
+  userNames: Record<string, string>,
 ): Promise<{
   meetingUrl: string
   meetingId: string
@@ -95,7 +96,6 @@ export async function createZoomMeeting(
         use_pmi: false,
         enforce_login: true,
         auto_recording: 'none',
-        // authentication_option: 'signIn', // Requires Zoom account authentication
         require_registration_email: true, // Must match registered email exactly
         allow_multiple_devices: false, // Prevent link sharing across devices
       },
@@ -119,30 +119,31 @@ export async function createZoomMeeting(
     // Store individual registration URLs
     const registrantUrls: Record<string, string> = {}
 
-    // Register each participant with a proper last name
+    // Register each participant with their actual name
     if (participants.length > 0) {
       for (const email of participants) {
         console.log(`Registering participant: ${email}`)
 
-        // Parse name from email and ensure last name is not empty
-        let firstName = email.split('@')[0]
-        let lastName = 'User' // Default last name to ensure it's not empty
+        // Get the user's full name
+        const fullName = userNames[email] || email.split('@')[0]
+        
+        // Split the name into first and last name
+        const nameParts = fullName.trim().split(/\s+/)
+        let firstName = nameParts[0]
+        let lastName = 'User' // Default last name if not provided
 
-        // If email username has a dot, use it to split into first/last name
-        if (firstName.includes('.')) {
-          const nameParts = firstName.split('.')
-          firstName =
-            nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1)
-          lastName =
-            nameParts[1].charAt(0).toUpperCase() + nameParts[1].slice(1)
-        } else if (firstName.includes('_')) {
-          // Try underscore as separator
-          const nameParts = firstName.split('_')
-          firstName =
-            nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1)
-          lastName =
-            nameParts[1].charAt(0).toUpperCase() + nameParts[1].slice(1)
+        if (nameParts.length > 1) {
+          // If we have more than one part, use the last part as last name
+          lastName = nameParts[nameParts.length - 1]
+          // If we have more than two parts, join the middle parts
+          if (nameParts.length > 2) {
+            firstName = nameParts.slice(0, -1).join(' ')
+          }
         }
+
+        // Capitalize first letter of each name
+        firstName = firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase()
+        lastName = lastName.charAt(0).toUpperCase() + lastName.slice(1).toLowerCase()
 
         const participantData = {
           email: email,

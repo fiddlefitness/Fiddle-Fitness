@@ -1,14 +1,40 @@
 // This script is for testing your WhatsApp API integration
-require('dotenv').config()
-const axios = require('axios')
+import axios from 'axios'
+import dotenv from 'dotenv'
+
+dotenv.config()
 
 // Configuration
-const RECIPIENT_PHONE = process.env.TEST_PHONE_NUMBER || '918305387299' // Add country code (91 for India)
+const RECIPIENT_PHONE = '918305387299' // Add country code (91 for India)
 const WHATSAPP_TOKEN =
   process.env.WHATSAPP_TOKEN ||
   'EAAQpLM8tVZCQBO1ZAlZAmYY22oBsCczm5ZBbZAS8bn4A6GlF4ZBoKUse1VtYxkyZAT97MJpVSPzTSTJZAQYAx3SgzXRCQ8VszSZBtZBK4ZAUtGT1OxLNRxFXMcXaKid3zsXKhLCD3PA9o6OTAkcQZBeRgs0HjER7yNFg8OpJUF66yFZByIXJHYrXDx0ZArlG1GrWKrL4hCsAZDZD'
 const WHATSAPP_PHONE_NUMBER_ID =
   process.env.WHATSAPP_PHONE_NUMBER_ID || '623332544193238'
+
+// Types for payment data
+interface PaymentData {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  method: string;
+  vpa?: string;
+  email: string;
+  contact: string;
+  description?: string;
+  fee?: number;
+  tax?: number;
+  created_at: number;
+  notes?: {
+    eventId: string;
+    userId: string;
+  };
+  card?: {
+    network?: string;
+  };
+  bank?: string;
+}
 
 // Function to send a sple text message
 async function testVideoMessages() {
@@ -66,7 +92,7 @@ async function testVideoMessages() {
         
         console.log(`✅ Success for ${video.name}:`);
         console.log(JSON.stringify(videoResponse.data, null, 2));
-      } catch (videoError) {
+      } catch (videoError: any) {
         console.error(`❌ Error with ${video.name}:`);
         if (videoError.response) {
           console.error('Status:', videoError.response.status);
@@ -206,7 +232,7 @@ async function sendCategoriesListMessage() {
 }
 
 // Helper function to log detailed error information
-function logDetailedError(messageType, error) {
+function logDetailedError(messageType: string, error: any) {
   console.error(`\n❌ ERROR SENDING ${messageType.toUpperCase()} ❌`)
 
   if (error.response) {
@@ -249,6 +275,99 @@ function logDetailedError(messageType, error) {
     }
   }
 }
+
+// Function to send a professional payment receipt message
+async function sendPaymentReceiptMessage(paymentData: PaymentData) {
+  try {
+    // Format the amount with currency symbol
+    const formattedAmount = new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: paymentData.currency || 'INR'
+    }).format(paymentData.amount / 100);
+
+    // Format the date
+    const paymentDate = new Date(paymentData.created_at * 1000).toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    // Format payment method
+    let paymentMethod = paymentData.method;
+    if (paymentData.method === 'upi') {
+      paymentMethod = `UPI (${paymentData.vpa})`;
+    } else if (paymentData.method === 'card') {
+      paymentMethod = `Card (${paymentData.card?.network || 'Card'})`;
+    } else if (paymentData.method === 'netbanking') {
+      paymentMethod = `Net Banking (${paymentData.bank || 'Bank'})`;
+    }
+
+    // Build the receipt message
+    const receiptMessage = 
+      `📄 *PAYMENT RECEIPT*\n\n` +
+      `💰 *Amount:* ${formattedAmount}\n` +
+      `📅 *Date:* ${paymentDate}\n` +
+      `💳 *Payment Method:* ${paymentMethod}\n` +
+      `🆔 *Transaction ID:* ${paymentData.id}\n` +
+      `📝 *Description:* ${paymentData.description || 'Event Registration'}\n\n` +
+      `*Payment Status:* ✅ ${paymentData.status.toUpperCase()}\n\n` +
+      `*Additional Details:*\n` +
+      `• Fee: ₹${(paymentData.fee || 0) / 100}\n` +
+      `• Tax: ₹${(paymentData.tax || 0) / 100}\n` +
+      `• Contact: ${paymentData.contact}\n` +
+      `• Email: ${paymentData.email}\n\n` +
+      `Thank you for your payment! 🎉`;
+
+    // Send the receipt message
+    const response = await axios({
+      method: 'POST',
+      url: `https://graph.facebook.com/v18.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: RECIPIENT_PHONE,
+        type: 'text',
+        text: {
+          body: receiptMessage
+        }
+      }
+    });
+
+    console.log('Payment receipt sent successfully:');
+    console.log(JSON.stringify(response.data, null, 2));
+  } catch (error) {
+    logDetailedError('Payment receipt message', error);
+  }
+}
+
+// Example usage with sample payment data
+const samplePaymentData = {
+  id: "pay_QEdFmrfUYpDAw1",
+  amount: 1000,
+  currency: "INR",
+  status: "captured",
+  method: "upi",
+  vpa: "8076333861@ybl",
+  email: "kapilworkspace23@gmail.com",
+  contact: "+918305387299",
+  description: "Registration for Zumba Blast",
+  fee: 24,
+  tax: 4,
+  created_at: 1743693651,
+  notes: {
+    eventId: "cm91hse5g0000n3nny6bgs1ah",
+    userId: "cm91hltre0000js0499mv13j0"
+  }
+};
+
+// Uncomment to test
+sendPaymentReceiptMessage(samplePaymentData);
 
 // sendEventDetailsMessage()
 // sendTextMessage()

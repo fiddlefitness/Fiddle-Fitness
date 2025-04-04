@@ -195,18 +195,6 @@ function EventCard({ event }) {
               <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
                 Pools Assigned
               </span>
-            ) : isDeadlinePassed ? (
-              <div className="flex space-x-2 items-center">
-                <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">
-                  Pending Assignment
-                </span>
-                <Link 
-                  href={`/admin/events/${event.id}/assign-pools`}
-                  className="text-indigo-600 text-xs hover:text-indigo-800"
-                >
-                  Assign Pools
-                </Link>
-              </div>
             ) : (
               <span className="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded">
                 Registration Open

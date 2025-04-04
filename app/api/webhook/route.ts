@@ -389,7 +389,7 @@ async function getUpcomingEventCategories() {
       },
       OR: [
         { registrationDeadline: null },
-        { registrationDeadline: { gt: now } },
+        { registrationDeadline: { gte: now } }, 
       ],
     },
     select: {
@@ -972,7 +972,7 @@ async function handleIncomingMessage(
       return
     }
 
-    const user = convertToUser(userData)
+    const user = convertToUser(userData) 
 
     // Check context timeout
     const isContextTimeout = await checkContextTimeout(user)
@@ -1117,7 +1117,7 @@ async function getUpcomingEventsByCategory(category: string): Promise<Event[]> {
       },
       OR: [
         { registrationDeadline: null },
-        { registrationDeadline: { gt: now } },
+        { registrationDeadline: { gte: now } }, // Changed gt to gte to include the deadline day
       ],
     },
     orderBy: {

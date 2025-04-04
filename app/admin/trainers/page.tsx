@@ -81,9 +81,9 @@ export default function TrainersPage() {
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Events
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {/* <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
-                </th>
+                </th> */}
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -125,20 +125,7 @@ export default function TrainersPage() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <Link 
-                      href={`/admin/trainers/${trainer.id}`}
-                      className="text-indigo-600 hover:text-indigo-900 mr-3"
-                    >
-                      View
-                    </Link>
-                    <Link 
-                      href={`/admin/trainers/${trainer.id}/edit`}
-                      className="text-indigo-600 hover:text-indigo-900"
-                    >
-                      Edit
-                    </Link>
-                  </td>
+                
                 </tr>
               ))}
               

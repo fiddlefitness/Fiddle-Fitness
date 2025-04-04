@@ -95,9 +95,9 @@ export async function createZoomMeeting(
         use_pmi: false,
         enforce_login: true,
         auto_recording: 'none',
-        // authentication_option: 'signIn', // Requires Zoom account authentication
-        require_registration_email: true, // Must match registered email exactly
-        allow_multiple_devices: false, // Prevent link sharing across devices
+        require_registration_email: true,
+        allow_multiple_devices: false,
+        alternative_hosts: hostEmail, // Set the host email here
       },
     }
 
@@ -119,9 +119,11 @@ export async function createZoomMeeting(
     // Store individual registration URLs
     const registrantUrls: Record<string, string> = {}
 
-    // Register each participant with a proper last name
-    if (participants.length > 0) {
-      for (const email of participants) {
+    // Register each participant (excluding the host)
+    const filteredParticipants = participants.filter(email => email !== hostEmail)
+    
+    if (filteredParticipants.length > 0) {
+      for (const email of filteredParticipants) {
         console.log(`Registering participant: ${email}`)
 
         // Parse name from email and ensure last name is not empty
@@ -210,6 +212,9 @@ export async function createZoomMeeting(
         }
       }
     }
+
+    // Add host's join URL
+    registrantUrls[hostEmail] = join_url
 
     return {
       meetingUrl: join_url,
