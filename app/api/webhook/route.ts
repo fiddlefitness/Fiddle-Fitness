@@ -1182,7 +1182,7 @@ async function sendEventsList(
               title: 'Upcoming Events',
               rows: formattedEvents.map(event => ({
                 id: event.id,
-                title: event.titlet
+                title: event.title,
                 description: event.description,
               })),
             },
