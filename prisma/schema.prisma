@@ -32,6 +32,7 @@ model User {
   payments Payment[]
   paymentOrders PaymentOrder[]
   invoices Invoice[]
+  reviews EventReview[]
 }
 
 model Event {
@@ -58,6 +59,7 @@ model Event {
   pools         Pool[]
   paymentOrders PaymentOrder[]
   invoices      Invoice[]
+  reviews       EventReview[]
 }
 
 model Trainer {
@@ -208,4 +210,23 @@ model PaymentOrder {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// New model for event reviews
+model EventReview {
+  id            String    @id @default(cuid())
+  rating        Int?      // 1-5 rating
+  feedback      String?   // Additional feedback or reason for dissatisfaction
+  status        String    // pending, completed
+  
+  // Relationships
+  user          User      @relation(fields: [userId], references: [id])
+  userId        String
+  event         Event     @relation(fields: [eventId], references: [id])
+  eventId       String
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([userId, eventId])
 }

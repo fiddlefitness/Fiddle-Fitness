@@ -69,147 +69,162 @@ async function assignPools(request: Request, { params }: { params: RequestParams
     }
 
     // Start a transaction to handle pool creation and assignments
-    const result = await prisma.$transaction(async tx => {
-      // Parse event time (expecting format like "10:00 - 14:00")
-      let startHour = 10
-      let startMinute = 0
-      let endHour = 11
-      let endMinute = 0
+    let result;
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        // Parse event time (expecting format like "10:00 - 14:00")
+        let startHour = 10
+        let startMinute = 0
+        let endHour = 11
+        let endMinute = 0
 
-      try {
-        if (event.eventTime && event.eventTime.includes('-')) {
-          const [startTimePart, endTimePart] = event.eventTime
-            .split('-')
-            .map(t => t.trim())
-
-          // Parse start time with AM/PM
-          const startTimeMatch = startTimePart.match(
-            /(\d+):?(\d*)\s*([APap][Mm])?/,
-          )
-          if (startTimeMatch) {
-            startHour = parseInt(startTimeMatch[1])
-            startMinute = startTimeMatch[2] ? parseInt(startTimeMatch[2]) : 0
-
-            // Handle PM for start time
-            const startPeriod = startTimeMatch[3]?.toUpperCase() || 'AM'
-            if (startPeriod === 'PM' && startHour < 12) {
-              startHour += 12
-            } else if (startPeriod === 'AM' && startHour === 12) {
-              startHour = 0 // 12 AM is 0 in 24-hour format
-            }
-          }
-
-          // Parse end time with AM/PM
-          const endTimeMatch = endTimePart.match(
-            /(\d+):?(\d*)\s*([APap][Mm])?/,
-          )
-          if (endTimeMatch) {
-            endHour = parseInt(endTimeMatch[1])
-            endMinute = endTimeMatch[2] ? parseInt(endTimeMatch[2]) : 0
-
-            // Handle PM for end time
-            const endPeriod = endTimeMatch[3]?.toUpperCase() || 'PM'
-            if (endPeriod === 'PM' && endHour < 12) {
-              endHour += 12
-            } else if (endPeriod === 'AM' && endHour === 12) {
-              endHour = 0 // 12 AM is 0 in 24-hour format
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing event time:', error)
-        // Use default values if parsing fails
-      }
-
-      // Set start and end time for Zoom meeting
-      const meetingStartTime = new Date(event.eventDate)
-      meetingStartTime.setHours(startHour, startMinute, 0)
-
-      // Calculate duration in minutes
-      const duration = (endHour - startHour) * 60 + (endMinute - startMinute)
-
-      // Get all participant emails (users and trainers)
-      const userEmails = registeredUsers
-        .map(reg => reg.user.email)
-        .filter(email => email && email.includes('@')) // Filter out invalid or missing emails
-
-      const trainerEmails = trainers
-        .map(trainer => trainer.email)
-        .filter(email => email && email.includes('@'))
-
-      // Combine all participant emails
-      const allParticipantEmails = [...userEmails, ...trainerEmails]
-
-      // Create a map of email to full name
-      const userNames: Record<string, string> = {}
-      registeredUsers.forEach(reg => {
-        if (reg.user.email) {
-          userNames[reg.user.email] = reg.user.name
-        }
-      })
-      trainers.forEach(trainer => {
-        if (trainer.email) {
-          userNames[trainer.email] = trainer.name
-        }
-      })
-
-      // Create Zoom meeting with all participants
-      let meetingData = null
-      if (allParticipantEmails.length > 0) {
         try {
-          meetingData = await createZoomMeeting(
-            event.title,
-            meetingStartTime.toISOString(),
-            duration,
-            allParticipantEmails.filter((email): email is string => email !== null),
-            userEmails[0], // Use first user's email as host for now
-            userNames, // Pass the user names map
-          )
+          if (event.eventTime && event.eventTime.includes('-')) {
+            const [startTimePart, endTimePart] = event.eventTime
+              .split('-')
+              .map(t => t.trim())
 
-          if (!meetingData || !meetingData.meetingUrl) {
-            throw new Error('Failed to create Zoom meeting')
+            // Parse start time with AM/PM
+            const startTimeMatch = startTimePart.match(
+              /(\d+):?(\d*)\s*([APap][Mm])?/,
+            )
+            if (startTimeMatch) {
+              startHour = parseInt(startTimeMatch[1])
+              startMinute = startTimeMatch[2] ? parseInt(startTimeMatch[2]) : 0
+
+              // Handle PM for start time
+              const startPeriod = startTimeMatch[3]?.toUpperCase() || 'AM'
+              if (startPeriod === 'PM' && startHour < 12) {
+                startHour += 12
+              } else if (startPeriod === 'AM' && startHour === 12) {
+                startHour = 0 // 12 AM is 0 in 24-hour format
+              }
+            }
+
+            // Parse end time with AM/PM
+            const endTimeMatch = endTimePart.match(
+              /(\d+):?(\d*)\s*([APap][Mm])?/,
+            )
+            if (endTimeMatch) {
+              endHour = parseInt(endTimeMatch[1])
+              endMinute = endTimeMatch[2] ? parseInt(endTimeMatch[2]) : 0
+
+              // Handle PM for end time
+              const endPeriod = endTimeMatch[3]?.toUpperCase() || 'PM'
+              if (endPeriod === 'PM' && endHour < 12) {
+                endHour += 12
+              } else if (endPeriod === 'AM' && endHour === 12) {
+                endHour = 0 // 12 AM is 0 in 24-hour format
+              }
+            }
           }
         } catch (error) {
-          console.error('Error creating Zoom meeting:', error)
-          throw new Error('Failed to create Zoom meeting')
+          console.error('Error parsing event time:', error)
+          // Use default values if parsing fails
         }
-      }
 
-      // Create a single pool with all participants
-      const pool = await tx.pool.create({
-        data: {
-          name: 'Main Pool',
-          capacity: event.poolCapacity || 100,
-          meetLink: meetingData?.meetingUrl || null,
-          isActive: true,
-          eventId: event.id,
-          trainerId: trainers[0]?.id || null, // Assign first trainer if available
-        },
-      })
+        // Set start and end time for Zoom meeting
+        const meetingStartTime = new Date(event.eventDate)
+        meetingStartTime.setHours(startHour, startMinute, 0)
 
-      // Add all users to the pool
-      if (registeredUsers.length > 0) {
-        await tx.poolAttendee.createMany({
-          data: registeredUsers.map(reg => ({
-            poolId: pool.id,
-            userId: reg.userId,
-            notified: false,
-            meetLink: meetingData?.registrantUrls[reg.user.email] || null,
-          })),
+        // Calculate duration in minutes
+        const duration = (endHour - startHour) * 60 + (endMinute - startMinute)
+
+        // Get all participant emails (users and trainers)
+        const userEmails = registeredUsers
+          .map(reg => reg.user.email)
+          .filter(email => email && email.includes('@')) // Filter out invalid or missing emails
+
+        const trainerEmails = trainers
+          .map(trainer => trainer.email)
+          .filter(email => email && email.includes('@'))
+
+        // Combine all participant emails
+        const allParticipantEmails = [...userEmails, ...trainerEmails]
+
+        // Create a map of email to full name
+        const userNames: Record<string, string> = {}
+        registeredUsers.forEach(reg => {
+          if (reg.user.email) {
+            userNames[reg.user.email] = reg.user.name
+          }
         })
-      }
+        trainers.forEach(trainer => {
+          if (trainer.email) {
+            userNames[trainer.email] = trainer.name
+          }
+        })
 
-      // Update event to mark pools as assigned
-      await tx.event.update({
-        where: { id: event.id },
-        data: { poolsAssigned: true },
+        // Create Zoom meeting with all participants
+        let meetingData = null
+        if (allParticipantEmails.length > 0) {
+          try {
+            meetingData = await createZoomMeeting(
+              event.title,
+              meetingStartTime.toISOString(),
+              duration,
+              allParticipantEmails.filter((email): email is string => email !== null),
+              userEmails[0], // Use first user's email as host for now
+              userNames, // Pass the user names map
+            )
+
+            if (!meetingData || !meetingData.meetingUrl) {
+              throw new Error('Failed to create Zoom meeting')
+            }
+          } catch (error) {
+            console.error('Error creating Zoom meeting:', error)
+            throw new Error('Failed to create Zoom meeting')
+          }
+        }
+
+        // Create a single pool with all participants
+        const pool = await tx.pool.create({
+          data: {
+            name: 'Main Pool',
+            capacity: event.poolCapacity || 100,
+            meetLink: meetingData?.meetingUrl || null,
+            isActive: true,
+            eventId: event.id,
+            trainerId: trainers[0]?.id || null, // Assign first trainer if available
+          },
+        })
+
+        console.log('registereduses', registeredUsers)
+
+        // Add all users to the pool
+        if (registeredUsers.length > 0) {
+          await tx.poolAttendee.createMany({
+            data: registeredUsers.map(reg => ({
+              poolId: pool.id,
+              userId: reg.userId,
+              notified: false,
+              meetLink: meetingData?.registrantUrls[reg.user.email] || null,
+            })),
+          })
+        }
+
+        // Update event to mark pools as assigned
+        await tx.event.update({
+          where: { id: event.id },
+          data: { poolsAssigned: true },
+        })
+
+        return {
+          pool,
+          meetingData,
+        }
+      }, {
+        timeout: 10000, // 10 second timeout
+        maxWait: 5000, // 5 second max wait
+        isolationLevel: 'Serializable' // Use serializable isolation level
       })
-
-      return {
-        pool,
-        meetingData,
-      }
-    })
+    } catch (error) {
+      console.error('Transaction error:', error)
+      return NextResponse.json(
+        { error: 'Failed to process transaction. Please try again.' },
+        { status: 500 },
+      )
+    }
 
     // Send notifications to all participants
     try {

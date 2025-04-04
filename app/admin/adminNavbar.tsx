@@ -11,6 +11,7 @@ export default function AdminNavbar() {
     { name: 'Events', path: '/admin/events' },
     { name: 'Trainers', path: '/admin/trainers' },
     { name: 'Users', path: '/admin/users' },
+    { name: 'Reviews', path: '/admin/reviews' },
   ];
 
   return (
