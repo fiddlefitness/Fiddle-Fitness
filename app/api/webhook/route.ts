@@ -380,12 +380,20 @@ async function sendCategoryList(user: User) {
   }
 }
 
-async function getUpcomingEventCategories() {
+// Add this helper function at the top with other utility functions
+function getTodayAtMidnight() {
   const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  return now
+}
+
+// Update getUpcomingEventCategories function
+async function getUpcomingEventCategories() {
+  const now = getTodayAtMidnight()
   const upcomingEvents = await prisma.event.findMany({
     where: {
       eventDate: {
-        gt: now,
+        gte: now,
       },
       OR: [
         { registrationDeadline: null },
@@ -400,25 +408,10 @@ async function getUpcomingEventCategories() {
     },
   })
 
-  console.log('upcomingEvents', upcomingEvents)
-
   const eventCategories = [
     ...new Set(upcomingEvents.map(event => event.category)),
   ]
 
-  console.log('eventCategories', eventCategories)
-
-  console.log(
-    'EVENT_CATEGORIES',
-    EVENT_CATEGORIES.filter((category: Category) =>
-      eventCategories.some(
-        eventCategory =>
-          category.value === eventCategory ||
-          category.value === `cat_${eventCategory}` ||
-          eventCategory === `cat_${category.value.replace('cat_', '')}`,
-      ),
-    ),
-  )
   return EVENT_CATEGORIES.filter((category: Category) =>
     eventCategories.some(
       eventCategory =>
@@ -689,6 +682,17 @@ async function handleEventSelection(user: User, message: WhatsAppMessage) {
       await sendTextMessage(
         user.mobileNumber,
         "Sorry, I couldn't find details for that event. It may have been removed.",
+      )
+      await resetUserState(user)
+      return
+    }
+
+    // Add check for registration deadline
+    const now = getTodayAtMidnight()
+    if (event.registrationDeadline && event.registrationDeadline < now) {
+      await sendTextMessage(
+        user.mobileNumber,
+        "Sorry, the registration deadline for this event has passed.",
       )
       await resetUserState(user)
       return
@@ -1106,18 +1110,18 @@ function convertToUser(userData: any): User {
   }
 }
 
-// Add the missing getUpcomingEventsByCategory function
+// Update getUpcomingEventsByCategory function
 async function getUpcomingEventsByCategory(category: string): Promise<Event[]> {
-  const now = new Date()
+  const now = getTodayAtMidnight()
   return prisma.event.findMany({
     where: {
       category,
       eventDate: {
-        gt: now,
+        gte: now,
       },
       OR: [
         { registrationDeadline: null },
-        { registrationDeadline: { gte: now } }, // Changed gt to gte to include the deadline day
+        { registrationDeadline: { gte: now } },
       ],
     },
     orderBy: {
@@ -1178,7 +1182,7 @@ async function sendEventsList(
               title: 'Upcoming Events',
               rows: formattedEvents.map(event => ({
                 id: event.id,
-                title: event.title,
+                title: event.titlet
                 description: event.description,
               })),
             },

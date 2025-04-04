@@ -139,6 +139,30 @@ async function sendPaymentReceiptMessage(paymentData: PaymentData, phoneNumber: 
   }
 }
 
+// Function to send email receipt via Razorpay
+async function sendEmailReceipt(paymentId: string, email: string): Promise<void> {
+  try {
+    const response = await axios.post(
+      `https://api.razorpay.com/v1/payments/${paymentId}/email`,
+      {
+        email: email,
+        cc: [], // Optional: Add CC emails if needed
+        bcc: [] // Optional: Add BCC emails if needed
+      },
+      {
+        auth: {
+          username: process.env.RAZORPAY_KEY_ID || '',
+          password: process.env.RAZORPAY_KEY_SECRET || '',
+        },
+      }
+    );
+    console.log('Email receipt sent successfully:', response.data);
+  } catch (error) {
+    console.error('Error sending email receipt:', error);
+    // Don't throw error as this is not critical
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const {
@@ -221,22 +245,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify payment amount matches event price
-    if (amount !== parseFloat(event.price) * 100) {
+    // Check if registration deadline has passed (including today)
+    const now = new Date()
+    now.setHours(0, 0, 0, 0) // Set time to midnight
+    if (event.registrationDeadline && new Date(event.registrationDeadline).setHours(0, 0, 0, 0) < now.getTime()) {
       return NextResponse.json(
-        { message: 'Payment amount does not match event price', isOk: false },
+        { message: 'Registration deadline has passed', isOk: false },
         { status: 400 },
       )
     }
 
-    // Check if registration is still open
-    const now = new Date()
-    if (
-      event.registrationDeadline &&
-      new Date(event.registrationDeadline).setHours(23, 59, 59, 999) < now.getTime()
-    ) {
+    // Verify payment amount matches event price
+    if (amount !== parseFloat(event.price) * 100) {
       return NextResponse.json(
-        { message: 'Registration for this event has closed', isOk: false },
+        { message: 'Payment amount does not match event price', isOk: false },
         { status: 400 },
       )
     }
@@ -331,6 +353,11 @@ export async function POST(request: NextRequest) {
 
     // Send detailed payment receipt
     await sendPaymentReceiptMessage(paymentDetails, user.mobileNumber)
+
+    // After successful payment verification and before sending WhatsApp messages
+    if (user.email) {
+      await sendEmailReceipt(razorpayPaymentId, user.email);
+    }
 
     // Follow-up message
     await sendTextMessage(

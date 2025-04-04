@@ -1,7 +1,7 @@
 // app/api/events/route.js
-import { NextResponse } from 'next/server';
-import {prisma} from '@/lib/prisma';
 import { withApiKey } from '@/lib/authMiddleware';
+import { prisma } from '@/lib/prisma';
+import { NextResponse } from 'next/server';
 
 async function getEvents(request) {
   try {
@@ -9,6 +9,7 @@ async function getEvents(request) {
     const filter = searchParams.get('filter') || 'all';
     
     const now = new Date();
+    now.setHours(0, 0, 0, 0); // Set time to midnight
     
     // Base query
     let whereClause = {};
@@ -16,7 +17,7 @@ async function getEvents(request) {
     // Filter events based on the filter parameter
     if (filter === 'upcoming') {
       whereClause.eventDate = {
-        gt: now
+        gte: now // Changed from gt to gte
       };
     }
     
@@ -75,7 +76,9 @@ async function getEvents(request) {
         registeredUsers,
         pools,
         isPast: new Date(event.eventDate) < now,
-        isDeadlinePassed: event.registrationDeadline ? new Date(event.registrationDeadline) < now : false
+        isDeadlinePassed: event.registrationDeadline ? 
+          new Date(event.registrationDeadline).setHours(0, 0, 0, 0) < now.getTime() : 
+          false
       };
     });
     
