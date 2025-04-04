@@ -1212,8 +1212,51 @@ async function handleIncomingMessage(
       if (handled) return
     }
 
-    // Rest of the existing conversation flow
-    // ... existing code ...
+    // Handle flow responses
+    if (
+      message.type === 'interactive' &&
+      message.interactive?.type === 'nfm_reply'
+    ) {
+      const flowResponse = message.interactive.nfm_reply
+      if (!flowResponse) {
+        console.error('Invalid flow response structure')
+        return
+      }
+
+      if (flowResponse.body === 'Sent' && flowResponse.name === 'flow') {
+        await sendTextMessage(
+          phoneNumber,
+          `Thanks ${user.name}, we now know you well. Thrilled you're here!`,
+        )
+        await handleRegisterNewEvent(user)
+        return
+      }
+    }
+
+    // Handle state-based messages
+    switch (user.conversationState) {
+      case ConversationState.IDLE:
+        await handleIdleState(user, message)
+        break
+      case ConversationState.AWAITING_MEDICAL_CHECK:
+        await handleButtonResponse(user, message)
+        break
+      case ConversationState.AWAITING_CATEGORY_SELECTION:
+        await handleCategorySelection(user, message)
+        break
+      case ConversationState.AWAITING_EVENT_SELECTION:
+        await handleEventSelection(user, message)
+        break
+      case ConversationState.AWAITING_REGISTRATION_CONFIRMATION:
+        await handleRegistrationConfirmation(user, message)
+        break
+      case ConversationState.AWAITING_REGISTERED_EVENT_SELECTION:
+        await handleRegisteredEventSelection(user, message)
+        break
+      default:
+        await resetUserState(user)
+        await handleIdleState(user, message)
+    }
   } catch (error) {
     await handleError(error, phoneNumber)
   }
