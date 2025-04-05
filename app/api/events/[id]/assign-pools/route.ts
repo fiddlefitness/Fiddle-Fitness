@@ -1,12 +1,34 @@
 // app/api/events/[id]/assign-pools/route.js
-import { sendTextMessage } from '@/app/api/webhook/route';
 import { prisma } from '@/lib/prisma';
+import {
+  sendEventMeetLinkTemplate,
+  sendMeetLinkTrainerTemplate,
+  sendPoolAssignmentErrorTemplate,
+  sendTrainerReminderTemplate,
+  sendUserReminderTemplate
+} from '@/lib/whatsapp';
 import { createZoomMeeting } from '@/lib/zoom';
 import { NextResponse } from 'next/server';
 
 interface RequestParams {
   id: string;
 }
+
+// Add a type definition for the Event object at the top with other interfaces
+interface EventData {
+  id: string;
+  title: string;
+  eventDate: Date;
+  eventTime: string;
+  registrationDeadline?: Date;
+  poolCapacity?: number;
+  poolsAssigned?: boolean;
+  registrations: Array<any>;
+  eventTrainers: Array<{trainer: any}>;
+  pools: Array<any>;
+}
+
+let EventDataForError: EventData | null = null;
 
 async function assignPools(request: Request, { params }: { params: RequestParams }) {
   const { id } = params
@@ -30,32 +52,39 @@ async function assignPools(request: Request, { params }: { params: RequestParams
       },
     })
 
+
+
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
+    // @ts-expect-error
+    EventDataForError = event;
 
     // Check if registration deadline has passed
     const now = new Date()
     const registrationDeadlinePassed =
       event.registrationDeadline && new Date(event.registrationDeadline) < now
 
-    // if (!registrationDeadlinePassed) {
-    //   return NextResponse.json(
-    //     {
-    //       error:
-    //         'Registration deadline has not passed yet. Pools cannot be assigned until registration closes.',
-    //     },
-    //     { status: 400 },
-    //   )
-    // }
+    if (!registrationDeadlinePassed) {
+      return NextResponse.json(
+        {
+          error:
+            'Registration deadline has not passed yet. Pools cannot be assigned until registration closes.',
+        },
+        { status: 400 },
+      )
+    }
 
     // Check if we already have pools assigned
+
     if (event.poolsAssigned && event.pools.length > 0) {
       return NextResponse.json(
         { error: 'Pools are already assigned for this event' },
         { status: 400 },
       )
     }
+
+
 
     // Get all registered users and trainers
     const registeredUsers = event.registrations
@@ -127,8 +156,10 @@ async function assignPools(request: Request, { params }: { params: RequestParams
         const meetingStartTime = new Date(event.eventDate)
         meetingStartTime.setHours(startHour, startMinute, 0)
 
+
         // Calculate duration in minutes
         const duration = (endHour - startHour) * 60 + (endMinute - startMinute)
+
 
         // Get all participant emails (users and trainers)
         const userEmails = registeredUsers
@@ -154,6 +185,7 @@ async function assignPools(request: Request, { params }: { params: RequestParams
             userNames[trainer.email] = trainer.name
           }
         })
+
 
         // Create Zoom meeting with all participants
         let meetingData = null
@@ -238,21 +270,29 @@ async function assignPools(request: Request, { params }: { params: RequestParams
       for (const registration of event.registrations) {
         const userMeetLink = meetingData?.registrantUrls[registration.user.email]
         if (userMeetLink) {
-          await sendTextMessage(
+          // Format date for template
+          const eventDate = new Date(event.eventDate).toLocaleDateString('en-US', {
+            day: '2-digit',
+            month: 'long'
+          });
+          
+          // Send template message instead of text message
+          await sendEventMeetLinkTemplate(
             registration.user.mobileNumber,
-            `🎉 Yay! Your event is ready.\n\n` +
-            `Dear ${registration.user.name},\n\n` +
-            `Event Details:\n` +
-            `Event: ${event.title}\n` + 
-            `Date: ${new Date(event.eventDate).toLocaleDateString()}\n` +
-            `Time: ${event.eventTime}\n\n` +
-            `You are assigned to ${pool.name}. Please join the Zoom meeting via:\n${userMeetLink}\n\n` +
-            `For seamless access, please:\n` +
-            `• Use the email that was used for registration\n` +
-            `• Join a few minutes prior to the start\n` +
-            `• Ensure your Zoom display name matches your registration name\n\n` +
-            `We look forward to your participation!`
-          )
+            event.title,
+            eventDate,
+            event.eventTime,
+            trainers[0].name,
+            userMeetLink
+          );
+          
+          // Send reminder 1 to user
+          try {
+            await sendUserReminderTemplate(registration.user.mobileNumber);
+          } catch (reminderError) {
+            console.error('Error sending user reminder 1:', reminderError);
+            // Don't fail if sending reminder fails
+          }
         }
       }
 
@@ -260,22 +300,29 @@ async function assignPools(request: Request, { params }: { params: RequestParams
       for (const trainer of trainers) {
         const trainerMeetLink = trainer.email ? meetingData?.registrantUrls?.[trainer.email] : null
         if (trainerMeetLink) {
-          await sendTextMessage(
+          // Format date for template
+          const eventDate = new Date(event.eventDate).toLocaleDateString('en-US', {
+            day: '2-digit',
+            month: 'long'
+          });
+          
+          // Send template message to trainer
+          await sendMeetLinkTrainerTemplate(
             trainer.mobileNumber,
-            `🎓 Trainer Assignment Confirmation\n\n` +
-            `Dear ${trainer.name},\n\n` +
-            `You have been assigned to conduct the session for:\n` +
-            `Event: ${event.title}\n` +
-            `Pool: ${pool.name}\n` +
-            `Date: ${new Date(event.eventDate).toLocaleDateString()}\n` +
-            `Time: ${event.eventTime}\n\n` +
-            `Your Zoom meeting link: ${trainerMeetLink}\n\n` +
-            `Please:\n` +
-            `• Join 10 minutes before the session start time\n` + 
-            `• Ensure your Zoom display name matches your trainer profile\n` +
-            `• Have your training materials ready\n\n` +
-            `Thank you for conducting this session!`
-          )
+            trainer.name,
+            event.title,
+            eventDate,
+            event.eventTime,
+            trainerMeetLink
+          );
+          
+          // Send reminder 1 to trainer
+          try {
+            await sendTrainerReminderTemplate(trainer.mobileNumber);
+          } catch (reminderError) {
+            console.error('Error sending trainer reminder 1:', reminderError);
+            // Don't fail if sending reminder fails
+          }
         }
       }
     } catch (error) {
@@ -289,6 +336,39 @@ async function assignPools(request: Request, { params }: { params: RequestParams
     })
   } catch (error) {
     console.error('Error assigning pools:', error)
+    
+    // Send error notification to the owner
+    try {
+      // Only proceed if event was defined earlier in the code
+      if (EventDataForError) {
+        // Format date for template
+        const eventDate = new Date((EventDataForError as unknown as EventData).eventDate).toLocaleDateString('en-US', {
+          day: '2-digit',
+          month: 'long'
+        });
+
+        // Get owner's phone number
+        const ownerPhone = process.env.ADMIN_PHONE_NUMBER || '8305387299';
+        
+        if (ownerPhone) {
+          // Generate dashboard URL for the event
+          const dashboardUrl = (EventDataForError as unknown as EventData).id;
+          
+          await sendPoolAssignmentErrorTemplate(
+            ownerPhone,
+            (EventDataForError as unknown as EventData).title,
+            eventDate,
+            (EventDataForError as unknown as EventData).eventTime,
+            error instanceof Error ? error.message : 'Failed to assign pools',
+            dashboardUrl
+          );
+        }
+      }
+    } catch (notificationError) {
+      console.error('Error sending pool assignment error notification:', notificationError);
+      // Don't fail if notification sending fails
+    }
+    
     return NextResponse.json(
       { error: 'Failed to assign pools' },
       { status: 500 },

@@ -226,20 +226,22 @@ export default function PaymentForm({
             <div className='grid grid-cols-2 gap-4'>
               <div>
                 <p className='text-sm text-gray-500'>Name</p>
-                <p className='text-gray-900'>{user.name}</p>
+                <p className='text-gray-900 truncate'>{user.name}</p>
               </div>
               <div>
                 <p className='text-sm text-gray-500'>Mobile</p>
                 <p className='text-gray-900'>{user.mobileNumber}</p>
               </div>
-              <div>
+              <div className="overflow-hidden">
                 <p className='text-sm text-gray-500'>Email</p>
-                <p className='text-gray-900'>{user.email || 'Not provided'}</p>
+                <p className='text-gray-900 truncate' title={user.email || 'Not provided'}>
+                  {user.email || 'Not provided'}
+                </p>
               </div>
               {user.city && (
                 <div>
                   <p className='text-sm text-gray-500'>City</p>
-                  <p className='text-gray-900'>{user.city}</p>
+                  <p className='text-gray-900 truncate'>{user.city}</p>
                 </div>
               )}
             </div>

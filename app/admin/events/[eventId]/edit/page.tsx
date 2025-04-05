@@ -1,25 +1,72 @@
 // app/admin/events/[id]/edit/page.js
 'use client'
 
-import { useState, useEffect, use } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import React, { useEffect, useState } from 'react'
+
+// Define types for the component
+interface Params {
+  eventId: string;
+}
+
+interface Trainer {
+  id: string;
+  name: string;
+  // Add other trainer properties as needed
+}
+
+interface EventTrainer {
+  trainerId: string;
+}
+
+// API event data structure
+interface EventData {
+  title?: string;
+  description?: string;
+  category?: string;
+  eventDate?: string;
+  eventTime?: string;
+  maxCapacity?: number;
+  poolCapacity?: number;
+  price?: number;
+  registrationDeadline?: string;
+  eventTrainers?: EventTrainer[];
+  trainers?: { id: string; name?: string }[];
+}
+
+// Form data structure with all required fields
+interface FormDataType {
+  title: string;
+  description: string;
+  category: string;
+  eventDate: string;
+  startTime: string;
+  startPeriod: string;
+  endTime: string;
+  endPeriod: string;
+  maxCapacity: number;
+  poolCapacity: number;
+  price: number;
+  registrationDeadline: string;
+}
 
 // Hardcoded list of fitness categories
 
-export default function EditEventPage({ params }) {
+export default function EditEventPage({ params }: { params: Params | Promise<Params> }) {
   const router = useRouter()
-  const { eventId } = use(params)
+  const unwrappedParams = React.use(params as Promise<Params>)
+  const { eventId } = unwrappedParams
 
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
-  const [trainers, setTrainers] = useState([])
+  const [trainers, setTrainers] = useState<Trainer[]>([])
   const [trainersLoading, setTrainersLoading] = useState(true)
-  const [selectedTrainers, setSelectedTrainers] = useState([])
-  const [error, setError] = useState(null)
+  const [selectedTrainers, setSelectedTrainers] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormDataType>({
     title: '',
     description: '',
     category: '',
@@ -42,7 +89,13 @@ export default function EditEventPage({ params }) {
     
     try {
       // Parse "10:00 AM - 2:00 PM" format
-      const [startPart, endPart] = timeString.split('-').map(part => part.trim());
+      const parts = timeString.split('-');
+      if (parts.length !== 2) {
+        return { startTime: '', startPeriod: 'AM', endTime: '', endPeriod: 'PM' };
+      }
+      
+      const startPart = parts[0].trim();
+      const endPart = parts[1].trim();
       
       let startTime = '';
       let startPeriod = 'AM';
@@ -78,8 +131,20 @@ export default function EditEventPage({ params }) {
   // Fetch trainers and event data
   useEffect(() => {
     const fetchInitialData = async () => {
-      await Promise.all([fetchTrainers(), fetchEventData()])
-      setInitialLoading(false)
+      try {
+        setInitialLoading(true)
+        
+        // First fetch trainers
+        await fetchTrainers()
+        
+        // Then fetch event data
+        await fetchEventData()
+      } catch (error) {
+        console.error("Error loading initial data:", error)
+        setError("Failed to load event data. Please try again.")
+      } finally {
+        setInitialLoading(false)
+      }
     }
 
     fetchInitialData()
@@ -112,6 +177,8 @@ export default function EditEventPage({ params }) {
 
   const fetchEventData = async () => {
     try {
+      console.log("Fetching event data for ID:", eventId);
+      
       const response = await fetch(`/api/events/${eventId}`, {
         headers: {
           'Content-Type': 'application/json',
@@ -125,25 +192,15 @@ export default function EditEventPage({ params }) {
       }
 
       const eventData = await response.json()
+      console.log("Event data received:", eventData);
+      
+      if (!eventData) {
+        throw new Error('No event data received')
+      }
 
-      const parsedTime = parseEventTime(eventData.eventTime);
-
-      setFormData({
-        title: eventData.title || '',
-        description: eventData.description || '',
-        category: eventData.category || '',
-        eventDate: formattedEventDate,
-        // Replace eventTime with parsed components
-        startTime: parsedTime.startTime,
-        startPeriod: parsedTime.startPeriod,
-        endTime: parsedTime.endTime,
-        endPeriod: parsedTime.endPeriod,
-        maxCapacity: eventData.maxCapacity || 100,
-        poolCapacity: eventData.poolCapacity || 50,
-        price: eventData.price || 0,
-        registrationDeadline: formattedDeadline
-      });
-
+      // Safely parse event time
+      const parsedTime = parseEventTime(eventData.eventTime || '');
+      console.log("Parsed time:", parsedTime);
 
       // Format dates for form inputs
       const formattedEventDate = eventData.eventDate
@@ -155,7 +212,7 @@ export default function EditEventPage({ params }) {
         : ''
 
       // Set form data
-      setFormData({
+      const newFormData = {
         title: eventData.title || '',
         description: eventData.description || '',
         category: eventData.category || '',
@@ -168,21 +225,31 @@ export default function EditEventPage({ params }) {
         poolCapacity: eventData.poolCapacity || 50,
         price: eventData.price || 0,
         registrationDeadline: formattedDeadline,
-      })
+      };
+      
+      console.log("Setting form data:", newFormData);
+      setFormData(newFormData);
 
-      // Set selected trainers
-      if (eventData.eventTrainers && eventData.eventTrainers.length > 0) {
-        const trainerIds = eventData.eventTrainers.map(et => et.trainerId)
+      // Set selected trainers - handle both API response formats
+      if (eventData.trainers && Array.isArray(eventData.trainers) && eventData.trainers.length > 0) {
+        // Handle trainers from the formatted API response
+        const trainerIds = eventData.trainers.map((trainer: { id: string }) => trainer.id)
+        console.log("Setting trainers from trainers array:", trainerIds);
+        setSelectedTrainers(trainerIds)
+      } else if (eventData.eventTrainers && Array.isArray(eventData.eventTrainers) && eventData.eventTrainers.length > 0) {
+        // Handle eventTrainers from direct DB response
+        const trainerIds = eventData.eventTrainers.map((et: { trainerId: string }) => et.trainerId)
+        console.log("Setting trainers from eventTrainers array:", trainerIds);
         setSelectedTrainers(trainerIds)
       }
     } catch (err) {
       console.error('Error fetching event:', err)
-      setError(err.message)
+      setError(err instanceof Error ? err.message : 'An unknown error occurred')
     }
   }
 
-  const handleChange = e => {
-    const { name, value, type } = e.target
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target as HTMLInputElement
 
     // Handle numeric inputs
     if (type === 'number') {
@@ -203,7 +270,7 @@ export default function EditEventPage({ params }) {
     }
   }
 
-  const handleTrainerSelect = trainerId => {
+  const handleTrainerSelect = (trainerId: string) => {
     // If trainer is already selected, remove them
     if (selectedTrainers.includes(trainerId)) {
       setSelectedTrainers(selectedTrainers.filter(id => id !== trainerId))
@@ -213,12 +280,18 @@ export default function EditEventPage({ params }) {
     }
   }
 
-  const handleSubmit = async e => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // Validate category is selected
     if (!formData.category) {
       setError('Please select an event category')
+      return
+    }
+
+    // Validate time fields
+    if (!formData.startTime || !formData.endTime) {
+      setError('Start time and end time are required')
       return
     }
 
@@ -229,13 +302,7 @@ export default function EditEventPage({ params }) {
 
     if (selectedTrainers.length < minRequiredTrainers) {
       setError(
-        `Based on your event setup (${
-          formData.maxCapacity
-        } total capacity with ${
-          formData.poolCapacity
-        } per pool), you need at least ${minRequiredTrainers} trainers. Please select ${
-          minRequiredTrainers - selectedTrainers.length
-        } more trainer(s).`,
+        `Based on your event setup (${formData.maxCapacity} total capacity with ${formData.poolCapacity} per pool), you need at least ${minRequiredTrainers} trainers. Please select ${minRequiredTrainers - selectedTrainers.length} more trainer(s).`
       )
       return
     }
@@ -249,32 +316,78 @@ export default function EditEventPage({ params }) {
     setError(null)
 
     try {
-      // Combine form data with selected trainers
+      console.log("Submitting form data:", formData);
+      console.log("Selected trainers:", selectedTrainers);
+
+      // Ensure time format is correct (HH:MM)
+      let startTime = formData.startTime;
+      let endTime = formData.endTime;
+      
+      // Add validation for time format
+      const timeRegex = /^\d{1,2}:\d{2}$/;
+      if (!timeRegex.test(startTime)) {
+        startTime = startTime.includes(':') ? startTime : `${startTime}:00`;
+      }
+      if (!timeRegex.test(endTime)) {
+        endTime = endTime.includes(':') ? endTime : `${endTime}:00`;
+      }
+
+      // The API expects these fields directly in the request body
       const eventData = {
-        ...formData,
-        trainers: selectedTrainers,
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        eventDate: formData.eventDate,
+        // Send the time components separately to match what the API expects
+        startTime: startTime,
+        startPeriod: formData.startPeriod,
+        endTime: endTime,
+        endPeriod: formData.endPeriod,
+        maxCapacity: formData.maxCapacity,
+        poolCapacity: formData.poolCapacity,
+        price: formData.price,
+        registrationDeadline: formData.registrationDeadline,
+        trainers: selectedTrainers, // Send array of trainer IDs
       }
+      
+      console.log("Sending event data to API:", eventData);
 
-      const response = await fetch(`/api/events/${eventId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': API_KEY,
-        },
-        body: JSON.stringify(eventData),
-      })
+      try {
+        const response = await fetch(`/api/events/${eventId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': API_KEY,
+          },
+          body: JSON.stringify(eventData),
+        })
+        
+        console.log("API response status:", response.status, response.statusText);
+        
+        let data;
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json();
+          console.log("API response data:", data);
+        } else {
+          const text = await response.text();
+          console.error("Non-JSON response:", text);
+          throw new Error('Server returned non-JSON response');
+        }
 
-      const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to update event')
+        }
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to update event')
+        console.log('Event successfully updated:', data)
+        router.push(`/admin/events/${eventId}`)
+      } catch (fetchError) {
+        console.error('Network or parsing error:', fetchError);
+        throw fetchError;
       }
-
-      console.log('Event updated:', data)
-      router.push(`/admin/events/${eventId}`)
     } catch (err) {
       console.error('Error updating event:', err)
-      setError(err.message || 'Error updating event. Please try again.')
+      setError(err instanceof Error ? err.message : 'Error updating event. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -537,7 +650,7 @@ export default function EditEventPage({ params }) {
               <textarea
                 id='description'
                 name='description'
-                rows='3'
+                rows={3}
                 value={formData.description}
                 onChange={handleChange}
                 className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'

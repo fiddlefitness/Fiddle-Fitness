@@ -1,10 +1,16 @@
 // app/api/events/[id]/route.js
-import { NextResponse } from 'next/server';
-import {prisma} from '@/lib/prisma';
 import { withApiKey } from '@/lib/authMiddleware';
+import { prisma } from '@/lib/prisma';
+import { sendMeetLinkTrainerTemplate } from '@/lib/whatsapp';
+import { addParticipantsToZoomMeeting } from '@/lib/zoom';
+import { NextResponse } from 'next/server';
+
+interface RequestParams {
+  id: string;
+}
 
 // Get a specific event by ID
-async function getEvent(request, { params }) {
+async function getEvent(request: Request, { params }: { params: RequestParams }) {
   const { id } = params;
   
   try {
@@ -30,7 +36,8 @@ async function getEvent(request, { params }) {
               }
             }
           }
-        }
+        },
+        reviews: true // Include reviews data
       }
     });
     
@@ -82,9 +89,26 @@ async function getEvent(request, { params }) {
         notified: attendee.notified
       }))
     }));
+
+    // Calculate reviews statistics
+    let averageRating = 0;
+    let totalReviews = 0;
+    
+    if (event.reviews && event.reviews.length > 0) {
+      const completedReviews = event.reviews.filter(review => 
+        review.status === 'completed' && review.rating != null
+      );
+      
+      totalReviews = completedReviews.length;
+      
+      if (totalReviews > 0) {
+        const totalRating = completedReviews.reduce((sum, review) => sum + (review.rating || 0), 0);
+        averageRating = totalRating / totalReviews;
+      }
+    }
     
     // Clean up the event object
-    const { eventTrainers, registrations: regs, ...eventData } = event;
+    const { eventTrainers, registrations: regs, reviews, ...eventData } = event;
     
     const formattedEvent = {
       ...eventData,
@@ -93,7 +117,9 @@ async function getEvent(request, { params }) {
       pools,
       registeredUsers: registrations.length,
       isPast: new Date(event.eventDate).getTime() < now.getTime(),
-      isDeadlinePassed: event.registrationDeadline ? new Date(event.registrationDeadline).setHours(23, 59, 59, 999) < now.getTime() : false
+      isDeadlinePassed: event.registrationDeadline ? new Date(event.registrationDeadline).setHours(23, 59, 59, 999) < now.getTime() : false,
+      averageRating,
+      totalReviews
     };
     
     return NextResponse.json(formattedEvent);
@@ -107,14 +133,16 @@ async function getEvent(request, { params }) {
 }
 
 // Update an event
-async function fixEvent(request, { params }) {
+async function fixEvent(request: Request, { params }: { params: RequestParams }) {
   const { id } = params;
   
   try {
     const data = await request.json();
+    console.log("Received event data:", data);
     
-    // Validate required fields
-    if (!data.title || !data.eventDate || !data.eventTime) {
+    // Validate required fields - updated to check for either eventTime or time components
+    if (!data.title || !data.eventDate || 
+        (!data.eventTime && !(data.startTime && data.endTime))) {
       return NextResponse.json(
         { error: 'Title, event date, and event time are required' },
         { status: 400 }
@@ -125,7 +153,16 @@ async function fixEvent(request, { params }) {
     const existingEvent = await prisma.event.findUnique({
       where: { id },
       include: {
-        eventTrainers: true
+        eventTrainers: {
+          include: {
+            trainer: true
+          }
+        },
+        pools: {
+          include: {
+            attendees: true
+          }
+        }
       }
     });
     
@@ -136,18 +173,47 @@ async function fixEvent(request, { params }) {
       );
     }
     
+    // Check if pools are already assigned for this event
+    const poolsAssigned = existingEvent.poolsAssigned && existingEvent.pools.length > 0;
+    
+    // Get existing trainer IDs
+    const existingTrainerIds = existingEvent.eventTrainers.map(et => et.trainerId);
+    
+    // Get new trainer IDs from request that don't exist in the event yet
+    const newTrainerIds = data.trainers ? 
+      data.trainers.filter((trainerId: string) => !existingTrainerIds.includes(trainerId)) : 
+      [];
+    
     // Update the event with a transaction to ensure all related records are updated correctly
     const result = await prisma.$transaction(async (prisma) => {
       // Update the event
+      let eventTime = '';
+      
+      // Format the event time properly
+      if (data.eventTime) {
+        // If eventTime is directly provided, use it
+        eventTime = data.eventTime;
+      } else if (data.startTime && data.endTime) {
+        // Otherwise construct it from the components
+        const startTime = data.startTime.includes(':') ? data.startTime : `${data.startTime}:00`;
+        const endTime = data.endTime.includes(':') ? data.endTime : `${data.endTime}:00`;
+        eventTime = `${startTime} ${data.startPeriod || 'AM'} - ${endTime} ${data.endPeriod || 'PM'}`;
+      } else {
+        // Fallback to existing time if no new time provided
+        eventTime = existingEvent.eventTime;
+      }
+      
       const updatedEvent = await prisma.event.update({
         where: { id },
         data: {
           title: data.title,
           description: data.description,
           eventDate: new Date(data.eventDate),
-          eventTime: data.eventTime,
+          eventTime: eventTime,
           location: data.location,
           maxCapacity: parseInt(data.maxCapacity) || 100,
+          poolCapacity: parseInt(data.poolCapacity) || 50,
+          price: parseFloat(data.price) || 0,
           registrationDeadline: data.registrationDeadline ? new Date(data.registrationDeadline) : null
         }
       });
@@ -163,7 +229,7 @@ async function fixEvent(request, { params }) {
         
         // Create new trainer relationships
         if (data.trainers.length > 0) {
-          const trainerConnections = data.trainers.map(trainerId => ({
+          const trainerConnections = data.trainers.map((trainerId: string) => ({
             trainerId,
             eventId: id
           }));
@@ -177,6 +243,80 @@ async function fixEvent(request, { params }) {
       return updatedEvent;
     });
     
+    // If pools are assigned and there are new trainers, add them to the zoom meeting
+    if (poolsAssigned && newTrainerIds.length > 0) {
+      try {
+        // Find the main pool with meeting link
+        const mainPool = existingEvent.pools.find(pool => pool.meetLink);
+        
+        if (mainPool && mainPool.meetLink) {
+          // Get the meeting ID from the pool
+          const meetingUrl = mainPool.meetLink;
+          const meetingId = meetingUrl.includes('/j/') ? 
+            meetingUrl.split('/j/')[1].split('?')[0] : null;
+          
+          if (meetingId) {
+            // Get new trainer details
+            const newTrainers = await prisma.trainer.findMany({
+              where: {
+                id: {
+                  in: newTrainerIds
+                }
+              }
+            });
+            
+            if (newTrainers.length > 0) {
+              // Create a map of trainer emails to names
+              const trainerNames: Record<string, string> = {};
+              newTrainers.forEach(trainer => {
+                if (trainer.email) {
+                  trainerNames[trainer.email] = trainer.name;
+                }
+              });
+              
+              // Filter out trainers with no email
+              const trainerEmails = newTrainers
+                .map(trainer => trainer.email)
+                .filter((email): email is string => email !== null && email.includes('@'));
+              
+              if (trainerEmails.length > 0) {
+                // Add new trainers to the Zoom meeting
+                const registrantUrls = await addParticipantsToZoomMeeting(
+                  meetingId,
+                  trainerEmails,
+                  trainerNames
+                );
+                
+                // Format date for WhatsApp template
+                const eventDate = new Date(existingEvent.eventDate).toLocaleDateString('en-US', {
+                  day: '2-digit',
+                  month: 'long'
+                });
+                
+                // Send meeting links to the new trainers
+                for (const trainer of newTrainers) {
+                  if (trainer.email && registrantUrls[trainer.email]) {
+                    // Send WhatsApp notification with meeting link
+                    await sendMeetLinkTrainerTemplate(
+                      trainer.mobileNumber,
+                      trainer.name,
+                      existingEvent.title,
+                      eventDate,
+                      existingEvent.eventTime,
+                      registrantUrls[trainer.email]
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error adding trainers to zoom meeting:', error);
+        // Don't fail the request if adding trainers to the meeting fails
+      }
+    }
+    
     return NextResponse.json(result);
   } catch (error) {
     console.error('Error updating event:', error);
@@ -188,7 +328,7 @@ async function fixEvent(request, { params }) {
 }
 
 // Delete an event
-async function deleteEvent(request, { params }) {
+async function deleteEvent(request: Request, { params }: { params: RequestParams }) {
   const { id } = params;
   
   try {

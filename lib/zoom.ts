@@ -225,3 +225,126 @@ export async function createZoomMeeting(
     throw error
   }
 }
+
+/**
+ * Add new participants to an existing Zoom meeting
+ * 
+ * @param meetingId - The ID of the existing Zoom meeting
+ * @param participants - Array of participant email addresses to add
+ * @param userNames - Record mapping email addresses to full names
+ * @returns Record mapping email addresses to their join URLs
+ */
+export async function addParticipantsToZoomMeeting(
+  meetingId: string,
+  participants: string[],
+  userNames: Record<string, string>
+): Promise<Record<string, string>> {
+  try {
+    // Get access token
+    const token = await getZoomAccessToken();
+    
+    // Store individual registration URLs
+    const registrantUrls: Record<string, string> = {};
+
+    // Register each participant with their actual name
+    if (participants.length > 0) {
+      for (const email of participants) {
+        console.log(`Registering additional participant: ${email}`);
+
+        // Get the user's full name
+        const fullName = userNames[email] || email.split('@')[0];
+        
+        // Split the name into first and last name
+        const nameParts = fullName.trim().split(/\s+/);
+        let firstName = nameParts[0];
+        let lastName = 'User'; // Default last name if not provided
+
+        if (nameParts.length > 1) {
+          // If we have more than one part, use the last part as last name
+          lastName = nameParts[nameParts.length - 1];
+          // If we have more than two parts, join the middle parts
+          if (nameParts.length > 2) {
+            firstName = nameParts.slice(0, -1).join(' ');
+          }
+        }
+
+        // Capitalize first letter of each name
+        firstName = firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+        lastName = lastName.charAt(0).toUpperCase() + lastName.slice(1).toLowerCase();
+
+        const participantData = {
+          email: email,
+          first_name: firstName,
+          last_name: lastName,
+          status: 'approved', // Pre-approve them
+        };
+
+        try {
+          console.log(
+            `Sending registration with first_name: ${firstName}, last_name: ${lastName}`
+          );
+          const registrantResponse = await axios.post(
+            `https://api.zoom.us/v2/meetings/${meetingId}/registrants`,
+            participantData,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+
+          if (registrantResponse.data && registrantResponse.data.join_url) {
+            registrantUrls[email] = registrantResponse.data.join_url;
+            console.log(
+              `✅ Successfully registered ${email} with unique join link`
+            );
+          } else {
+            console.warn(`⚠️ No join_url found in response for ${email}`);
+          }
+        } catch (error: any) {
+          console.error(
+            `Error registering participant ${email}:`,
+            error.response?.data || error.message
+          );
+
+          // Try to retrieve existing registration if available
+          try {
+            const registrantsResponse = await axios.get(
+              `https://api.zoom.us/v2/meetings/${meetingId}/registrants?email=${encodeURIComponent(
+                email
+              )}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+
+            if (
+              registrantsResponse.data.registrants &&
+              registrantsResponse.data.registrants.length > 0
+            ) {
+              registrantUrls[email] =
+                registrantsResponse.data.registrants[0].join_url;
+              console.log(`Retrieved existing join URL for ${email}`);
+            }
+          } catch (listError: any) {
+            console.error(
+              `Could not retrieve join URL for ${email}:`,
+              listError.response?.data || listError.message
+            );
+          }
+        }
+      }
+    }
+
+    return registrantUrls;
+  } catch (error: any) {
+    console.error(
+      'Error adding participants to Zoom meeting:',
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+}

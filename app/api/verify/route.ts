@@ -348,7 +348,7 @@ export async function POST(request: NextRequest) {
     // Send confirmation message via WhatsApp
     await sendTextMessage(
       user.mobileNumber,
-      `🎉 *Payment Successful!* 🎉\n\nYou have successfully registered for *${event.title}*\n\n📅 Event Date: ${eventDate}\n⏰ Event Time: ${event.eventTime || 'TBD'}\n\nWe're excited to see you there! 🙌`
+      `Here's confirming the receipt of your payment for *${event.title}*. Your official payment receipt will be sent to your email address. Event details will be shared 24-48 hrs prior to the scheduled date & time.`
     )
 
     // Send detailed payment receipt
@@ -378,6 +378,15 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error('Error in payment verification:', error)
+    
+    // Send failure message to user
+    try {
+      // Skip sending message since user data is not available in this scope
+      console.error('Unable to send failure message - user data not available')
+    } catch (msgError) {
+      console.error('Error sending payment failure message:', msgError)
+    }
+
     return NextResponse.json(
       { message: 'Internal server error', isOk: false },
       { status: 500 },

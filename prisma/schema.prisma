@@ -49,6 +49,7 @@ model Event {
   registrationDeadline DateTime?
   poolsAssigned        Boolean   @default(false)
   notificationSent     Boolean   @default(false)
+  reminder2Sent        Boolean   @default(false) // Added to track when reminder 2 is sent
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 

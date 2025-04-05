@@ -1,6 +1,7 @@
 // This script is for testing your WhatsApp API integration
 import axios from 'axios'
 import dotenv from 'dotenv'
+import { createEventMessage, formatEventDetailsMessage } from '../lib/formatMessages'
 
 dotenv.config()
 
@@ -132,17 +133,14 @@ async function sendEventDetailsMessage() {
     isUserRegistered: false,
   }
 
-  // Build message payload
-  const messageBody =
-    `📅 *Date:* ${eventDetails.date}\n` +
-    `⏰ *Time:* ${eventDetails.time}\n` +
-    `📍 *Location:* ${eventDetails.location}\n` +
-    `👨‍🏫 *Trainers:* ${eventDetails.trainers}\n\n` +
-    `${eventDetails.description}\n\n` +
-    `*Spots Remaining:* ${eventDetails.spotsRemaining} out of ${eventDetails.maxCapacity}`
+  // Format the message using our utility function to ensure character limits
+  const messageBody = formatEventDetailsMessage(eventDetails);
 
   // Build registration URL
-  const registrationUrl = `https://yourdomain.com/events/123?source=whatsapp&userId=user123`
+  const registrationUrl = `https://yourdomain.com/events/123?source=whatsapp&userId=user123`;
+
+  // Create the complete message
+  const fullMessage = createEventMessage(eventDetails.title, messageBody, registrationUrl);
 
   try {
     const response = await axios({
@@ -158,13 +156,10 @@ async function sendEventDetailsMessage() {
         to: RECIPIENT_PHONE,
         type: 'text',
         text: {
-          body: `${eventDetails.title}\n\n${messageBody}\n\nRegister here: https://yourdomain.com/events/123?source=whatsapp&userId=user123`
+          body: fullMessage
         }
       }
     })
-
-    // Send a follow-up message with the URL
-    
 
     console.log('Event details message sent successfully:')
     console.log(JSON.stringify(response.data, null, 2))

@@ -1,33 +1,12 @@
 // app/api/scheduler/assign-pools/route.js
-import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { withApiKey } from '@/lib/authMiddleware';
+import { NextResponse } from 'next/server';
 
-// Optional API key verification
-const verifyApiKey = (request) => {
-  const authHeader = request.headers.get('authorization');
-  // const apiKey = process.env.SCHEDULER_API_KEY;
-  
-  // Skip verification if no API key is configured (not recommended for production)
-  if (!apiKey) return true;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.split(' ')[1] !== apiKey) {
-    return false;
-  }
-  
-  return true;
-};
-
-
-export async function GET (request) {
+export async function GET(request: Request) {
   try {
-    // Verify API key for security (optional but recommended)
-    // if (!verifyApiKey(request)) {
-    //   return NextResponse.json(
-    //     { error: 'Unauthorized access' },
-    //     { status: 401 }
-    //   );
-    // }
+    // Get the current execution timestamp for logging
+    const executionTime = new Date();
+    console.log(`[${executionTime.toISOString()}] Starting pool assignment scheduler job`);
     
     // Calculate tomorrow's date (at midnight)
     const today = new Date();
@@ -57,13 +36,13 @@ export async function GET (request) {
       }
     });
 
-    console.log(eventsForTomorrow)
+    console.log(`[${executionTime.toISOString()}] Found ${eventsForTomorrow.length} events for tomorrow that may need pool assignment`);
   
-    
     if (eventsForTomorrow.length === 0) {
       return NextResponse.json({
         message: 'No events found for tomorrow that need pool assignment',
-        processed: 0
+        processed: 0,
+        timestamp: executionTime.toISOString()
       });
     }
     
@@ -71,84 +50,136 @@ export async function GET (request) {
     const results = [];
     let successCount = 0;
     let failureCount = 0;
+    let skippedCount = 0;
     
     for (const event of eventsForTomorrow) {
       try {
         // Check if registration deadline has passed or there's no deadline
         const now = new Date();
-        const registrationOpen = event.registrationDeadline && new Date(event.registrationDeadline) > now;
+        const hasDeadline = event.registrationDeadline !== null;
+        const registrationOpen = hasDeadline && event.registrationDeadline ? new Date(event.registrationDeadline) > now : false;
         
         // Skip events where registration is still open
         if (registrationOpen) {
+          console.log(`[${executionTime.toISOString()}] Skipping event ${event.id} - registration still open until ${event.registrationDeadline}`);
           results.push({
             eventId: event.id,
             title: event.title,
             status: 'skipped',
             reason: 'Registration deadline has not passed yet'
           });
+          skippedCount++;
           continue;
         }
         
-        // Call the pool assignment API for this event
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/events/${event.id}/assign-pools`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || ''
+        console.log(`[${executionTime.toISOString()}] Processing pool assignment for event ${event.id} - ${event.title}`);
+        
+        // Call the pool assignment API for this event with timeout
+        // Create an AbortController to cancel the fetch request if it takes too long
+        const controller = new AbortController();
+        // Set a timeout that will cancel the request after 30 seconds to prevent hanging
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
+        try {
+          // Call the pool assignment API for this event
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/events/${event.id}/assign-pools`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || ''
+            },
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          const result = await response.json();
+          
+          if (response.ok) {
+            console.log(`[${executionTime.toISOString()}] Successfully assigned pools for event ${event.id}`);
+            results.push({
+              eventId: event.id,
+              title: event.title,
+              status: 'success',
+              pools: result.pools ? result.pools.length : 0
+            });
+            successCount++;
+          } else {
+            console.error(`[${executionTime.toISOString()}] Failed to assign pools for event ${event.id}:`, result.error);
+            results.push({
+              eventId: event.id,
+              title: event.title,
+              status: 'failed',
+              error: result.error || 'Unknown error'
+            });
+            failureCount++;
           }
-        });
-        
-        const result = await response.json();
-        
-        if (response.ok) {
-          results.push({
-            eventId: event.id,
-            title: event.title,
-            status: 'success',
-            pools: result.pools ? result.pools.length : 0
-          });
-          successCount++;
-        } else {
-          results.push({
-            eventId: event.id,
-            title: event.title,
-            status: 'failed',
-            error: result.error || 'Unknown error'
-          });
+        } catch (fetchError: unknown) {
+          clearTimeout(timeoutId);
+          
+          if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+            console.error(`[${executionTime.toISOString()}] Request timeout for event ${event.id}`);
+            results.push({
+              eventId: event.id,
+              title: event.title,
+              status: 'failed',
+              error: 'Request timed out after 30 seconds'
+            });
+          } else {
+            const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown fetch error';
+            console.error(`[${executionTime.toISOString()}] Fetch error for event ${event.id}:`, fetchError);
+            results.push({
+              eventId: event.id,
+              title: event.title,
+              status: 'failed',
+              error: errorMessage
+            });
+          }
           failureCount++;
         }
-      } catch (error) {
-        console.error(`Error processing event ${event.id}:`, error);
+      } catch (eventError: unknown) {
+        const errorMessage = eventError instanceof Error ? eventError.message : 'Unknown error';
+        console.error(`[${executionTime.toISOString()}] Error processing event ${event.id}:`, eventError);
         results.push({
           eventId: event.id,
           title: event.title,
           status: 'failed',
-          error: error.message || 'Unknown error'
+          error: errorMessage
         });
         failureCount++;
       }
     }
     
     // Log a summary for monitoring
-    console.log(`Pool assignment job completed. Success: ${successCount}, Failed: ${failureCount}, Total: ${eventsForTomorrow.length}`);
+    const completionTime = new Date();
+    const executionDuration = (completionTime.getTime() - executionTime.getTime()) / 1000;
+    
+    console.log(`[${completionTime.toISOString()}] Pool assignment job completed in ${executionDuration}s. Success: ${successCount}, Failed: ${failureCount}, Skipped: ${skippedCount}, Total: ${eventsForTomorrow.length}`);
     
     return NextResponse.json({
       message: `Processed ${eventsForTomorrow.length} events for tomorrow`,
       summary: {
         total: eventsForTomorrow.length,
         success: successCount,
-        failed: failureCount
+        failed: failureCount,
+        skipped: skippedCount,
+        executionTimeSeconds: executionDuration
       },
+      timestamp: completionTime.toISOString(),
       results
     });
-  } catch (error) {
-    console.error('Error in pool assignment scheduler:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[${new Date().toISOString()}] Fatal error in pool assignment scheduler:`, error);
     return NextResponse.json(
-      { error: 'Failed to process pool assignments: ' + error.message },
+      { 
+        error: 'Failed to process pool assignments: ' + errorMessage,
+        timestamp: new Date().toISOString()
+      },
       { status: 500 }
     );
   }
 }
 
-
-// export const GET = withApiKey(getFunction)
+// Uncomment to enable API key middleware protection
+// export const GET = withApiKey(GET);

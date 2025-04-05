@@ -1,6 +1,21 @@
 import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
 import { extractLast10Digits } from '@/lib/formatMobileNumber'
 import { prisma } from '@/lib/prisma'
+import {
+  sendFlowTemplate,
+  sendHelpTroubleshootingMessage,
+  sendTextMessage,
+  sendUserHelpMessageToAdmin,
+  sendWelcomeMessageTemplate
+} from '@/lib/whatsapp'
+import {
+  limitListRows,
+  truncateBody,
+  truncateFooter,
+  truncateHeader,
+  truncateListDescription,
+  truncateListTitle
+} from '@/lib/whatsappLimits'
 import axios from 'axios'
 import { NextRequest } from 'next/server'
 
@@ -45,6 +60,7 @@ interface User {
   id: string
   mobileNumber: string
   name?: string
+  email?: string
   conversationState?: ConversationState
   lastInteraction?: Date
   contextData?: {
@@ -145,29 +161,10 @@ async function resetUserState(user: User) {
 }
 
 // Message Utility Functions
-export async function sendTextMessage(phoneNumber: string, message: string) {
-  try {
-    const response = await axios({
-      method: 'POST',
-      url: WHATSAPP_API_URL,
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      data: {
-        messaging_product: 'whatsapp',
-        to: phoneNumber,
-        type: 'text',
-        text: {
-          body: message,
-        },
-      },
-    })
-  } catch (error) {
-    console.error('Error sending text message:', error)
-    throw error
-  }
-}
+// Remove the local implementation of sendTextMessage
+// Remove the local implementation of sendFlowTemplate
+// Remove the local implementation of sendWelcomeMessageTemplate
+// Remove the local implementation of sendSessionConfirmationTemplate
 
 // now we will create a function to send a message with image or video to user 
 async function sendImageOrVideoMessage(phoneNumber: string, imageOrVideoUrl: string, message: string) {
@@ -203,8 +200,6 @@ async function sendImageOrVideoMessage(phoneNumber: string, imageOrVideoUrl: str
   }
 }
 
-
-
 async function sendInteractiveMessage(phoneNumber: string, message: any) {
   try {
     await axios.post(WHATSAPP_API_URL, message, {
@@ -215,108 +210,6 @@ async function sendInteractiveMessage(phoneNumber: string, message: any) {
     })
   } catch (error) {
     console.error('Error sending interactive message:', error)
-    throw error
-  }
-}
-
-async function sendFlowTemplate(
-  recipient: string,
-  templateName: string,
-  languageCode: string = 'en',
-) {
-  try {
-    const response = await axios({
-      method: 'POST',
-      url: `${flowBaseUrl}/messages`,
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      data: {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: recipient,
-        type: 'template',
-        template: {
-          name: templateName,
-          language: { code: languageCode },
-          components: [
-            {
-              type: 'button',
-              sub_type: 'FLOW',
-              index: '0',
-              parameters: [
-                {
-                  type: 'action',
-                  action: {
-                    flow_token: recipient,
-                    flow_action_data: {
-                      flow_action_payload: {
-                        data: {
-                          name: '',
-                          email: '',
-                          age: '',
-                          gender: '',
-                          city: '',
-                          phoneNumber: '',
-                        },
-                      },
-                    },
-                  },
-                },
-              ],
-            },
-          ],
-        },
-      },
-    })
-    return response.data
-  } catch (error) {
-    console.error('Error sending template message:', error)
-    throw error
-  }
-}
-
-async function sendWelcomeMessageTemplate(
-  recipient: string,
-  imageUrl: string,
-  languageCode: string = 'en',
-) {
-  try {
-    const response = await axios({
-      method: 'POST',
-      url: `${flowBaseUrl}/messages`,
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      data: {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: recipient,
-        type: 'template',
-        template: {
-          name: 'welcome_message_with_img',
-          language: { code: languageCode },
-          components: [
-            {
-              type: 'header',
-              parameters: [
-                {
-                  type: 'image',
-                  image: {
-                    link: imageUrl
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      }
-    })
-    return response.data
-  } catch (error) {
-    console.error('Error sending welcome message template:', error)
     throw error
   }
 }
@@ -552,7 +445,7 @@ async function handleMedicalFitYes(user: User) {
 async function handleMedicalFitNo(user: User) {
   await sendTextMessage(
     user.mobileNumber,
-    "I understand. For your safety, we recommend consulting with a healthcare professional before participating in fitness activities. Please feel free to return when you're ready to explore our events.",
+    "Thanks for letting us know. Prioritize your health, and we'll have more sessions soon!",
   )
   await resetUserState(user)
 }
@@ -562,40 +455,93 @@ async function sendMainMenu(
   phoneNumber: string,
   forwardedState: boolean = false,
 ) {
-  const message = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to: phoneNumber,
-    type: 'interactive',
-    interactive: {
-      type: 'button',
-      body: {
-        text: forwardedState
-          ? 'Is there anything else I can help you with?'
-          : 'What would you like to do today?',
+  try {
+    // Check if the user has any events scheduled for today
+    const userWithId = await prisma.user.findUnique({
+      where: { mobileNumber: phoneNumber },
+      select: { id: true }
+    });
+    
+    if (!userWithId) {
+      console.log(`User not found with phone number: ${phoneNumber}`);
+      return;
+    }
+    
+    // Check for today's events
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Start of today
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1); // Start of tomorrow
+    
+    const todaysEvents = await prisma.eventRegistration.findMany({
+      where: {
+        userId: userWithId.id,
+        event: {
+          eventDate: {
+            gte: today,
+            lt: tomorrow
+          }
+        }
       },
-      action: {
-        buttons: [
-          {
-            type: 'reply',
-            reply: {
-              id: 'view_registered_events',
-              title: 'View My Events',
-            },
-          },
-          {
-            type: 'reply',
-            reply: {
-              id: 'register_new_event',
-              title: 'Register New Event',
-            },
-          },
-        ],
+      include: {
+        event: true
+      }
+    });
+    
+    const hasTodayEvent = todaysEvents.length > 0;
+    console.log(`User ${phoneNumber} has ${todaysEvents.length} events today`);
+    
+    // Prepare buttons based on whether user has an event today
+    const buttons = [
+      {
+        type: 'reply',
+        reply: {
+          id: 'view_registered_events',
+          title: 'View My Events',
+        },
       },
-    },
-  }
+      {
+        type: 'reply',
+        reply: {
+          id: 'register_new_event',
+          title: 'Register New Event',
+        },
+      }
+    ];
+    
+    // Add Help button if user has an event today
+    if (hasTodayEvent) {
+      buttons.push({
+        type: 'reply',
+        reply: {
+          id: 'help_button',
+          title: 'Need Help?',
+        },
+      });
+    }
+    
+    const message = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phoneNumber,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: {
+          text: forwardedState
+            ? 'Is there anything else I can help you with?'
+            : 'What would you like to do today?',
+        },
+        action: {
+          buttons: buttons
+        },
+      },
+    }
 
-  await sendInteractiveMessage(phoneNumber, message)
+    await sendInteractiveMessage(phoneNumber, message)
+  } catch (error) {
+    console.error('Error sending main menu:', error);
+  }
 }
 
 async function sendMedicalFitnessCheck(user: User) {
@@ -726,17 +672,12 @@ async function handleEventSelection(user: User, message: WhatsAppMessage) {
     const spotsRemaining = event.maxCapacity - registrationCount
 
     const messageBody =
-      `📅 *Date:* ${new Date(event.eventDate).toLocaleDateString('en-US', {
+      `Great choice! You're confirmed for ${event.title} on ${new Date(event.eventDate).toLocaleDateString('en-US', {
         weekday: 'long',
         month: 'long',
         day: 'numeric',
         year: 'numeric',
-      })}\n` +
-      `⏰ *Time:* ${event.eventTime}\n` +
-      `📍 *Location:* ${event.location || 'Online'}\n` +
-      `🤝 *Trainers:* ${trainerNames}\n\n` +
-      `${event.description || 'Join this exciting event!'}\n\n` +
-      `*Spots Remaining:* ${spotsRemaining} out of ${event.maxCapacity}`
+      })} at ${event.eventTime} IST. Kindly complete the payment to secure your spot.`
 
     const baseUrl =
       process.env.NEXT_PUBLIC_BASE_URL ||
@@ -901,6 +842,55 @@ async function handleRegistrationConfirmation(
   await resetUserState(user)
 }
 
+// Add a new function to handle help requests
+async function handleHelpRequest(user: User) {
+  try {
+    console.log(`Processing help request for user: ${user.id}`);
+    await sendHelpTroubleshootingMessage(user.mobileNumber);
+    return true;
+  } catch (error) {
+    console.error('Error handling help request:', error);
+    await sendTextMessage(
+      user.mobileNumber,
+      'Sorry, we encountered an error processing your help request. Please try again later.'
+    );
+    return false;
+  }
+}
+
+// Add a function to handle Get Help button click
+async function handleGetHelpButtonClick(user: User) {
+  try {
+    console.log(`Processing "Get Help" request for user: ${user.id}`);
+    
+    // Get admin phone number from environment variable or use a default
+    const adminPhoneNumber = process.env.ADMIN_PHONE_NUMBER || '8305387299';
+    
+    // Send help request to admin
+    await sendUserHelpMessageToAdmin(
+      adminPhoneNumber,
+      user.name || 'User',
+      user.mobileNumber,
+      user.email || '',
+    );
+    
+    // Inform the user that help is on the way
+    await sendTextMessage(
+      user.mobileNumber,
+      'Thank you for reaching out. Our team has been notified and will contact you shortly to assist with your issue.'
+    );
+    
+    return true;
+  } catch (error) {
+    console.error('Error handling Get Help request:', error);
+    await sendTextMessage(
+      user.mobileNumber,
+      'Sorry, we encountered an error while forwarding your help request. Please try again later or contact us directly.'
+    );
+    return false;
+  }
+}
+
 // Button Handler
 async function handleButtonResponse(
   user: User,
@@ -929,6 +919,12 @@ async function handleButtonResponse(
     case 'medical_fit_no':
       await handleMedicalFitNo(user)
       return true
+    case 'help_button':
+      await handleHelpRequest(user)
+      return true
+    case 'get_help':
+      await handleGetHelpButtonClick(user)
+      return true
     default:
       return false
   }
@@ -937,8 +933,11 @@ async function handleButtonResponse(
 // Add these new functions for handling reviews
 
 // Send reasons list for unsatisfied ratings (1-3)
-async function sendDissatisfactionReasonsList(phoneNumber: string, reviewId: string) {
+async function sendDissatisfactionReasonsList(phoneNumber: string, eventTitle: string) {
   try {
+    // Truncate the event title to ensure it fits within WhatsApp's character limits
+    const truncatedEventTitle = truncateHeader(eventTitle);
+    
     const listMessage = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -951,10 +950,10 @@ async function sendDissatisfactionReasonsList(phoneNumber: string, reviewId: str
           text: 'We Value Your Feedback',
         },
         body: {
-          text: 'We\'re sorry to hear that. Could you please tell us what aspect of the event didn\'t meet your expectations?',
+          text: truncateBody(`We're sorry to hear that your experience with "${truncatedEventTitle}" didn't meet your expectations. Could you please tell us what aspect of the event didn't work for you?`),
         },
         footer: {
-          text: 'Select a reason',
+          text: truncateFooter('Select a reason'),
         },
         action: {
           button: 'Select Reason',
@@ -963,22 +962,22 @@ async function sendDissatisfactionReasonsList(phoneNumber: string, reviewId: str
               title: 'Reasons',
               rows: [
                 {
-                  id: `reason_audio_video_${reviewId}`,
+                  id: `reason_audio_video`,
                   title: 'Audio & Video Quality',
                   description: 'Issues with streaming quality',
                 },
                 {
-                  id: `reason_trainer_${reviewId}`,
+                  id: `reason_trainer`,
                   title: 'Trainer Effectiveness',
                   description: 'Issues with trainer performance',
                 },
                 {
-                  id: `reason_content_${reviewId}`,
+                  id: `reason_content`,
                   title: 'Choice of Songs',
                   description: 'Issues with music selection',
                 },
                 {
-                  id: `reason_payment_${reviewId}`,
+                  id: `reason_payment`,
                   title: 'Payment/Registration',
                   description: 'Issues with payment or registration',
                 },
@@ -1000,74 +999,105 @@ async function sendDissatisfactionReasonsList(phoneNumber: string, reviewId: str
 // Handle review rating responses
 async function handleReviewResponse(user: User, message: WhatsAppMessage) {
   // Check for both button replies and list replies
-  if (message.type !== 'interactive' || !message.interactive) {
-    return false
+  if (message.type === 'interactive' && message.interactive) {
+    const isButtonReply = message.interactive.type === 'button_reply'
+    const isListReply = message.interactive.type === 'list_reply'
+    
+    if (!isButtonReply && !isListReply) {
+      return false
+    }
+
+    // Extract the rating ID from either button or list reply
+    let ratingId = null
+    if (isButtonReply) {
+      ratingId = message.interactive.button_reply?.id
+    } else if (isListReply) {
+      ratingId = message.interactive.list_reply?.id
+    }
+
+    if (!ratingId || !ratingId.startsWith('rating_')) {
+      return false
+    }
+
+    const rating = parseInt(ratingId.split('_')[1])
+    if (isNaN(rating) || rating < 1 || rating > 5) {
+      return false
+    }
+
+    return await processReviewRating(user, rating)
+  } 
+  // Also handle text-based responses for ratings 1 and 2
+  else if (message.type === 'text' && message.text?.body) {
+    const text = message.text.body.trim();
+    // Accept any text input that's a valid rating number (1-5)
+    if (['1', '2', '3', '4', '5'].includes(text)) {
+      const rating = parseInt(text);
+      return await processReviewRating(user, rating);
+    }
   }
   
-  const isButtonReply = message.interactive.type === 'button_reply'
-  const isListReply = message.interactive.type === 'list_reply'
-  
-  if (!isButtonReply && !isListReply) {
-    return false
-  }
+  return false
+}
 
-  // Extract the rating ID from either button or list reply
-  let ratingId = null
-  if (isButtonReply) {
-    ratingId = message.interactive.button_reply?.id
-  } else if (isListReply) {
-    ratingId = message.interactive.list_reply?.id
-  }
+// Helper function to process a review rating
+async function processReviewRating(user: User, rating: number) {
+  try {
+    console.log(`Processing rating ${rating} for user ${user.id}`);
+    
+    // Find the pending review for this user
+    const pendingReview = await prisma.eventReview.findFirst({
+      where: {
+        userId: user.id,
+        status: 'pending',
+        rating: null // Should not have a rating yet
+      },
+      include: {
+        event: true,
+      },
+    });
 
-  if (!ratingId || !ratingId.startsWith('rating_')) {
-    return false
-  }
+    if (!pendingReview) {
+      console.log(`No pending review found for user ${user.id}`);
+      await sendTextMessage(
+        user.mobileNumber,
+        'Sorry, we couldn\'t find an active review request for you.',
+      );
+      return true;
+    }
 
-  const rating = parseInt(ratingId.split('_')[1])
-  if (isNaN(rating) || rating < 1 || rating > 5) {
-    return false
-  }
+    console.log(`Updating review ID: ${pendingReview.id} with rating: ${rating}`);
+    
+    // Update the review with the rating
+    const updatedReview = await prisma.eventReview.update({
+      where: { id: pendingReview.id },
+      data: {
+        rating: rating,
+        status: rating >= 4 ? 'completed' : 'pending', // Only mark as completed for 4-5 ratings
+      },
+    });
 
-  // Find the pending review for this user
-  const pendingReview = await prisma.eventReview.findFirst({
-    where: {
-      userId: user.id,
-      status: 'pending',
-    },
-    include: {
-      event: true,
-    },
-  })
+    if (rating <= 3) {
+      // For ratings 1-3, ask for reason
+      console.log(`Low rating (${rating}) received, asking for reason`);
+      await sendDissatisfactionReasonsList(user.mobileNumber, pendingReview.event.title);
+    } else {
+      // For ratings 4-5, thank the user
+      console.log(`High rating (${rating}) received, thanking user`);
+      await sendTextMessage(
+        user.mobileNumber,
+        `Thank you for your positive feedback! We're glad you enjoyed the ${pendingReview.event.title} event.`,
+      );
+    }
 
-  if (!pendingReview) {
+    return true;
+  } catch (error) {
+    console.error('Error processing review rating:', error);
     await sendTextMessage(
       user.mobileNumber,
-      'Sorry, we couldn\'t find an active review request for you.',
-    )
-    return true
+      'Sorry, we encountered an error processing your feedback. Please try again later.',
+    );
+    return true;
   }
-
-  // Update the review with the rating
-  await prisma.eventReview.update({
-    where: { id: pendingReview.id },
-    data: {
-      rating: rating,
-      status: rating >= 4 ? 'completed' : 'pending', // Only mark as completed for 4-5 ratings
-    },
-  })
-
-  if (rating <= 3) {
-    // For ratings 1-3, ask for reason
-    await sendDissatisfactionReasonsList(user.mobileNumber, pendingReview.id)
-  } else {
-    // For ratings 4-5, thank the user
-    await sendTextMessage(
-      user.mobileNumber,
-      `Thank you for your positive feedback! We're glad you enjoyed the ${pendingReview.event.title} event.`,
-    )
-  }
-
-  return true
 }
 
 // Handle dissatisfaction reason selection
@@ -1084,38 +1114,65 @@ async function handleDissatisfactionReason(user: User, message: WhatsAppMessage)
     return false
   }
 
-  // Extract review ID and reason
-  const parts = replyId.split('_')
-  const reason = parts[1]
-  const reviewId = parts.slice(2).join('_')
+  try {
+    // Extract just the reason type (audio_video, trainer, etc)
+    const reason = replyId.split('_')[1]; // Just get the reason part
+    
+    if (!reason) {
+      console.error('Could not extract reason from reply ID:', replyId);
+      return false;
+    }
+    
+    console.log(`Processing feedback reason: ${reason} for user: ${user.id}`);
 
-  // Update the review with the reason
-  const updatedReview = await prisma.eventReview.update({
-    where: { id: reviewId },
-    data: {
-      feedback: reason,
-      status: 'completed',
-    },
-    include: {
-      event: true,
-    },
-  })
+    // Find the pending review for this user instead of trying to use ID from the message
+    const pendingReview = await prisma.eventReview.findFirst({
+      where: {
+        userId: user.id,
+        status: 'pending',
+        rating: { not: null } // Make sure it has a rating (user has already rated)
+      },
+      include: {
+        event: true,
+      },
+    });
 
-  if (!updatedReview) {
+    if (!pendingReview) {
+      console.error(`No pending review found for user ${user.id}`);
+      await sendTextMessage(
+        user.mobileNumber,
+        'Sorry, we couldn\'t find your active review. Please try again later.',
+      );
+      return true;
+    }
+
+    // Update the review with the reason
+    const updatedReview = await prisma.eventReview.update({
+      where: { id: pendingReview.id }, // Use the ID from the found review
+      data: {
+        feedback: reason,
+        status: 'completed',
+      },
+      include: {
+        event: true,
+      },
+    });
+
+    // Thank the user for their feedback
     await sendTextMessage(
       user.mobileNumber,
-      'Sorry, we couldn\'t process your feedback. Please try again later.',
-    )
-    return true
+      `Thank you for your detailed feedback about ${updatedReview.event.title}. We appreciate your input and will use it to improve future events.`,
+    );
+
+    return true;
+  } catch (error) {
+    console.error('Error processing dissatisfaction reason:', error);
+    await sendTextMessage(
+      user.mobileNumber,
+      'Sorry, we encountered an error processing your feedback. Our team will look into this.',
+    );
+    return true;
   }
-
-  // Thank the user for their feedback
-  await sendTextMessage(
-    user.mobileNumber,
-    `Thank you for your detailed feedback about ${updatedReview.event.title}. We appreciate your input and will use it to improve future events.`,
-  )
-
-  return true
 }
 
 // Main Message Handler
@@ -1137,23 +1194,14 @@ async function handleIncomingMessage(
       return
     }
 
-    // Debug the incoming message structure for interactive messages
-    if (message.type === 'interactive' && message.interactive) {
-      console.log(`📨 Received interactive message of type: ${message.interactive.type}`);
-      
-      if (message.interactive.type === 'list_reply' && message.interactive.list_reply) {
-        console.log(`📨 List reply ID: ${message.interactive.list_reply.id}`);
-      } else if (message.interactive.type === 'button_reply' && message.interactive.button_reply) {
-        console.log(`📨 Button reply ID: ${message.interactive.button_reply.id}`);
-      }
-    }
   
     let userData = await prisma.user.findUnique({
       where: { mobileNumber: phoneNumber },
     })
 
     if (!userData) {
-      // Handle new user registration flow
+      // await sendTextMessage(phoneNumber, "Hi there! 👋 Welcome to Fiddle Fitness 💪. We're excited & ready to help you on your fitness journey! 🎯")
+      // Since these are async calls, we need to wait for the welcome message to complete before sending flow template
       try {
         // Send welcome message first and wait for it to complete
         await sendWelcomeMessageTemplate(phoneNumber, 'https://images.pexels.com/photos/4720236/pexels-photo-4720236.jpeg')
@@ -1169,38 +1217,32 @@ async function handleIncomingMessage(
 
     const user = convertToUser(userData) 
 
-    // Check for review responses first, before any other logic
-    // This should run regardless of context timeout or conversation state
+    // Try handling review responses first - BEFORE checking context timeout
     if (message.type === 'interactive' && message.interactive) {
-      // Check if this is a review rating response
+      // Check if this is a review rating response (both button and list replies)
       if ((message.interactive.type === 'button_reply' && 
            message.interactive.button_reply?.id?.startsWith('rating_')) ||
           (message.interactive.type === 'list_reply' && 
            message.interactive.list_reply?.id?.startsWith('rating_'))) {
-        console.log('🌟 Handling review rating response');
         const handled = await handleReviewResponse(user, message)
-        if (handled) {
-          console.log('✅ Review response was successfully handled');
-          return
-        }
+        if (handled) return // Exit early, don't process any further logic
       }
       
       // Check if this is a dissatisfaction reason response
       if (message.interactive.type === 'list_reply' && 
           message.interactive.list_reply?.id?.startsWith('reason_')) {
-        console.log('🔍 Handling dissatisfaction reason response');
         const handled = await handleDissatisfactionReason(user, message)
-        if (handled) {
-          console.log('✅ Dissatisfaction reason was successfully handled');
-          return
-        }
+        if (handled) return // Exit early, don't process any further logic
       }
     }
 
-    // Check context timeout
+    // Check context timeout AFTER handling review responses
+    // This prevents the welcome message from appearing after a review
     const isContextTimeout = await checkContextTimeout(user)
     if (isContextTimeout) {
       await resetUserState(user)
+      await handleIdleState(user, message)
+      return // Return after handling idle state to prevent further processing
     }
 
     // Handle button responses
@@ -1362,7 +1404,10 @@ async function sendEventsList(
     )
     const categoryLabel = categoryInfo ? categoryInfo.label : categoryName
 
-    const formattedEvents = events.map(event => {
+    // Make sure we don't exceed the maximum number of events in a list
+    const limitedEvents = limitListRows(events);
+
+    const formattedEvents = limitedEvents.map(event => {
       const eventDate = new Date(event.eventDate)
       const formattedDate = eventDate.toLocaleDateString('en-US', {
         weekday: 'short',
@@ -1370,10 +1415,13 @@ async function sendEventsList(
         day: 'numeric',
       })
 
+      // Create description text
+      const description = `happening on ${formattedDate} - ${event.eventTime}, Price: ₹${event.price}`;
+
       return {
         id: event.id,
-        title: event.title,
-        description: `happening on ${formattedDate} - ${event.eventTime}, Price: ₹${event.price}`,
+        title: truncateListTitle(event.title),
+        description: truncateListDescription(description),
       }
     })
 
@@ -1386,13 +1434,13 @@ async function sendEventsList(
         type: 'list',
         header: {
           type: 'text',
-          text: `${categoryLabel} Events`,
+          text: truncateHeader(`${categoryLabel} Events`),
         },
         body: {
-          text: `Here are the upcoming ${categoryLabel} events. Select one to view details and register.`,
+          text: truncateBody(`Kindly select the event you wish to participate in from the options provided.`),
         },
         footer: {
-          text: 'Select an event for more details',
+          text: truncateFooter('Select an event for more details'),
         },
         action: {
           button: 'View Events',
@@ -1448,6 +1496,13 @@ async function handleCategorySelection(user: User, message: WhatsAppMessage) {
       return
     }
 
+    const categoryInfo = EVENT_CATEGORIES.find(
+      cat => cat.value === selectedCategory,
+    )
+    const categoryDescription = categoryInfo ? categoryInfo.description : 'Unknown category'
+
+    await sendTextMessage(user.mobileNumber, `Thanks for your selection!\n${categoryDescription}`)
+
     const events = await getUpcomingEventsByCategory(selectedCategory)
 
     if (events.length === 0) {
@@ -1471,3 +1526,4 @@ async function handleCategorySelection(user: User, message: WhatsAppMessage) {
     throw error
   }
 }
+

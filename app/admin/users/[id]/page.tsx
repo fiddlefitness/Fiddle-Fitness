@@ -1,12 +1,13 @@
 // app/admin/users/[id]/page.js
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
 
-export default function UserDetailPage({ params }) {
+export default function UserDetailsPage({ params }: { params: { id: string } | Promise<{ id: string }> }) {
   const router = useRouter();
-  const { id } = params;
+  const unwrappedParams = React.use(params as Promise<{ id: string }>);
+  const { id } = unwrappedParams;
   
   const [user, setUser] = useState(null);
   const [registrations, setRegistrations] = useState({ upcoming: [], past: [] });

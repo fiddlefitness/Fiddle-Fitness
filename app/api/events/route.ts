@@ -21,6 +21,7 @@ async function getEvents(request) {
       };
     }
     
+    // Fetch events with registrations count, pools and trainers
     const events = await prisma.event.findMany({
       where: whereClause,
       include: {
@@ -35,7 +36,8 @@ async function getEvents(request) {
             trainer: true,
             attendees: true
           }
-        }
+        },
+        reviews: true // Include reviews for calculating ratings
       },
       orderBy: {
         eventDate: 'asc'
@@ -67,8 +69,25 @@ async function getEvents(request) {
         attendees: pool.attendees.length
       }));
       
+      // Calculate reviews statistics
+      let averageRating = 0;
+      let totalReviews = 0;
+      
+      if (event.reviews && event.reviews.length > 0) {
+        const completedReviews = event.reviews.filter(review => 
+          review.status === 'completed' && review.rating != null
+        );
+        
+        totalReviews = completedReviews.length;
+        
+        if (totalReviews > 0) {
+          const totalRating = completedReviews.reduce((sum, review) => sum + (review.rating || 0), 0);
+          averageRating = totalRating / totalReviews;
+        }
+      }
+      
       // Clean up the event object to return only what's needed
-      const { eventTrainers, registrations, ...eventData } = event;
+      const { eventTrainers, registrations, reviews, ...eventData } = event;
       
       return {
         ...eventData,
@@ -78,7 +97,9 @@ async function getEvents(request) {
         isPast: new Date(event.eventDate) < now,
         isDeadlinePassed: event.registrationDeadline ? 
           new Date(event.registrationDeadline).setHours(0, 0, 0, 0) < now.getTime() : 
-          false
+          false,
+        averageRating,
+        totalReviews
       };
     });
     

@@ -10,6 +10,7 @@
     "test:categories": "ts-node scripts/testEventCategories.ts"
   },
   "dependencies": {
+    "@nextui-org/react": "^2.6.11",
     "@prisma/client": "^6.5.0",
     "axios": "^1.8.4",
     "date-fns": "^4.1.0",
