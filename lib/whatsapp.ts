@@ -739,3 +739,74 @@ export async function sendUserHelpMessageToAdmin(
     throw error;
   }
 }
+
+
+
+/**
+ * Send a payment link template to a user
+ * 
+ * @param recipient - Recipient's phone number
+ * @param eventTitle - Title of the event
+ * @param eventDate - Date of the event (e.g., "10 April")
+ * @param eventTime - Time of the event (e.g., "11 AM")
+ * @param paymentLink - URL for the payment
+ * @param languageCode - Language code (default: 'en')
+ * @returns API response data
+ */
+export async function sendPaymentLinkTemplate(
+  recipient: string,
+  eventTitle: string,
+  eventDate: string,
+  eventTime: string,
+  paymentLink: string,
+  languageCode: string = 'en'
+) {
+  const data = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: recipient,
+    type: 'template',
+    template: {
+      name: 'send_payment_link',
+      language: { code: languageCode },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: truncateTemplateParam(eventTitle) },
+            { type: 'text', text: truncateTemplateParam(eventDate) },
+            { type: 'text', text: truncateTemplateParam(eventTime) }
+          ]
+        },
+        {
+          type: 'button',
+          sub_type: 'url',
+          index: 0,
+          parameters: [
+            {
+              type: 'text',
+              text: paymentLink
+            }
+          ]
+        }
+      ]
+    }
+  };
+
+  try {
+    const response = await axios({
+      method: 'POST',
+      url: `${getBaseUrl()}/messages`,
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+        'Content-Type': 'application/json',
+      },
+      data
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error sending payment link template:', error);
+    throw error;
+  }
+}

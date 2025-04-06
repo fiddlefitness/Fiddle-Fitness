@@ -348,11 +348,10 @@ export async function POST(request: NextRequest) {
     // Send confirmation message via WhatsApp
     await sendTextMessage(
       user.mobileNumber,
-      `Here's confirming the receipt of your payment for *${event.title}*. Your official payment receipt will be sent to your email address. Event details will be shared 24-48 hrs prior to the scheduled date & time.`
+      `Here's confirming the receipt of your payment for *${event.title}*. Your official payment receipt will be sent to your email address.`
     )
 
-    // Send detailed payment receipt
-    await sendPaymentReceiptMessage(paymentDetails, user.mobileNumber)
+
 
     // After successful payment verification and before sending WhatsApp messages
     if (user.email) {
