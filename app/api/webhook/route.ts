@@ -1086,7 +1086,7 @@ async function processReviewRating(user: User, rating: number) {
       console.log(`No pending review found for user ${user.id}`)
       await sendTextMessage(
         user.mobileNumber,
-        "Sorry, we couldn't find an active review request for you.",
+        "Your response to this survey is already registered",
       )
       return true
     }
