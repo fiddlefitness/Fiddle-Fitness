@@ -193,6 +193,19 @@ export async function POST(req: Request) {
                 const eventId = poolAttendees[0].pool.eventId;
 
                 console.log(`Found ${poolAttendees.length} attendees for event: ${eventTitle} (ID: ${eventId})`);
+                // before sending the review messages we will check if the event is already reviewed by the users
+                const eventReviews = await prisma.eventReview.findMany({
+                    where: {
+                        eventId: eventId
+                    }
+                });
+
+                // if the event is already reviewed by the users we will not send the review messages
+                if (eventReviews.length > 0) {
+                    console.log(`Event ${eventTitle} (ID: ${eventId}) is already reviewed by the users`);
+                    return NextResponse.json({ message: "Webhook received but no matching event found" }, { status: 200 });
+                }
+                
 
                 // Send review requests to all attendees
                 const results = await Promise.allSettled(

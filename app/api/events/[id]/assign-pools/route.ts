@@ -8,6 +8,7 @@ import {
   sendUserReminderTemplate
 } from '@/lib/whatsapp';
 import { createZoomMeeting } from '@/lib/zoom';
+import { shortenLink } from '@/lib/urlShortner'; // Import the URL shortening function
 import { NextResponse } from 'next/server';
 
 interface RequestParams {
@@ -52,8 +53,6 @@ async function assignPools(request: Request, { params }: { params: RequestParams
       },
     })
 
-
-
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
@@ -76,15 +75,12 @@ async function assignPools(request: Request, { params }: { params: RequestParams
     }
 
     // Check if we already have pools assigned
-
     if (event.poolsAssigned && event.pools.length > 0) {
       return NextResponse.json(
         { error: 'Pools are already assigned for this event' },
         { status: 400 },
       )
     }
-
-
 
     // Get all registered users and trainers
     const registeredUsers = event.registrations
@@ -156,10 +152,8 @@ async function assignPools(request: Request, { params }: { params: RequestParams
         const meetingStartTime = new Date(event.eventDate)
         meetingStartTime.setHours(startHour, startMinute, 0)
 
-
         // Calculate duration in minutes
         const duration = (endHour - startHour) * 60 + (endMinute - startMinute)
-
 
         // Get all participant emails (users and trainers)
         const userEmails = registeredUsers
@@ -185,7 +179,6 @@ async function assignPools(request: Request, { params }: { params: RequestParams
             userNames[trainer.email] = trainer.name
           }
         })
-
 
         // Create Zoom meeting with all participants
         let meetingData = null
@@ -275,15 +268,18 @@ async function assignPools(request: Request, { params }: { params: RequestParams
             day: '2-digit',
             month: 'long'
           });
+
+          // Shorten the Zoom meeting link using TinyURL
+          const shortLink = await shortenLink(userMeetLink);
           
-          // Send template message instead of text message
+          // Send template message with the shortened link
           await sendEventMeetLinkTemplate(
             registration.user.mobileNumber,
             event.title,
             eventDate,
             event.eventTime,
             trainers[0].name,
-            userMeetLink
+            shortLink
           );
           
           // Send reminder 1 to user
@@ -306,14 +302,17 @@ async function assignPools(request: Request, { params }: { params: RequestParams
             month: 'long'
           });
           
-          // Send template message to trainer
+          // Shorten the trainer's Zoom meeting link
+          const shortTrainerLink = await shortenLink(trainerMeetLink);
+          
+          // Send template message to trainer with shortened link
           await sendMeetLinkTrainerTemplate(
             trainer.mobileNumber,
             trainer.name,
             event.title,
             eventDate,
             event.eventTime,
-            trainerMeetLink
+            shortTrainerLink
           );
           
           // Send reminder 1 to trainer
@@ -377,4 +376,3 @@ async function assignPools(request: Request, { params }: { params: RequestParams
 }
 
 export { assignPools as POST };
-

@@ -227,7 +227,7 @@ async function sendCategoryList(user: User) {
     if (upcomingCategories.length === 0) {
       await sendTextMessage(
         user.mobileNumber,
-        'Sorry, there are no upcoming events available at the moment. Please check back later!',
+        `Thanks for your interest! All seats are currently filled, and we couldn’t accommodate your booking this time. Stay tuned to @fiddle.fitness on Instagram for upcoming slots and updates! \n`,
       )
 
       await resetUserState(user)
@@ -1086,7 +1086,7 @@ async function processReviewRating(user: User, rating: number) {
       console.log(`No pending review found for user ${user.id}`)
       await sendTextMessage(
         user.mobileNumber,
-        "Your response to this survey is already registered",
+        'Your response to this survey is already registered',
       )
       return true
     }
@@ -1231,7 +1231,6 @@ async function handleIncomingMessage(
     let userData = await prisma.user.findUnique({
       where: { mobileNumber: phoneNumber },
     })
-
     if (!userData) {
       // await sendTextMessage(phoneNumber, "Hi there! 👋 Welcome to Fiddle Fitness 💪. We're excited & ready to help you on your fitness journey! 🎯")
       // Since these are async calls, we need to wait for the welcome message to complete before sending flow template
@@ -1252,6 +1251,27 @@ async function handleIncomingMessage(
     }
 
     const user = convertToUser(userData)
+
+    // Handle flow responses
+    if (
+      message.type === 'interactive' &&
+      message.interactive?.type === 'nfm_reply'
+    ) {
+      const flowResponse = message.interactive.nfm_reply
+      if (!flowResponse) {
+        console.error('Invalid flow response structure')
+        return
+      }
+
+      if (flowResponse.body === 'Sent' && flowResponse.name === 'flow') {
+        await sendTextMessage(
+          phoneNumber,
+          `Thanks ${user?.name}, we now know you well. Thrilled you're here!`,
+        )
+        await handleRegisterNewEvent(user)
+        return
+      }
+    }
 
     // Try handling review responses first - BEFORE checking context timeout
     if (message.type === 'interactive' && message.interactive) {
@@ -1292,27 +1312,6 @@ async function handleIncomingMessage(
     ) {
       const handled = await handleButtonResponse(user, message)
       if (handled) return
-    }
-
-    // Handle flow responses
-    if (
-      message.type === 'interactive' &&
-      message.interactive?.type === 'nfm_reply'
-    ) {
-      const flowResponse = message.interactive.nfm_reply
-      if (!flowResponse) {
-        console.error('Invalid flow response structure')
-        return
-      }
-
-      if (flowResponse.body === 'Sent' && flowResponse.name === 'flow') {
-        await sendTextMessage(
-          phoneNumber,
-          `Thanks ${user.name}, we now know you well. Thrilled you're here!`,
-        )
-        await handleRegisterNewEvent(user)
-        return
-      }
     }
 
     // Handle state-based messages
@@ -1555,7 +1554,7 @@ async function handleCategorySelection(user: User, message: WhatsAppMessage) {
     if (events.length === 0) {
       await sendTextMessage(
         user.mobileNumber,
-        `Sorry, there are no upcoming events in the "${selectedCategory}" category. Would you like to check other categories?`,
+        `Thanks for your interest! All seats are currently filled, and we couldn’t accommodate your booking this time. Stay tuned to @fiddle.fitness on Instagram for upcoming slots and updates!`,
       )
       await resetUserState(user)
       await sendCategoryList(user)

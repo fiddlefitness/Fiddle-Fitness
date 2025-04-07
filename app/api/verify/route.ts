@@ -361,7 +361,7 @@ export async function POST(request: NextRequest) {
     // Follow-up message
     await sendTextMessage(
       user.mobileNumber,
-      `Next steps: We'll share the event details and location shortly. For any questions, please contact our support team.`
+      `Next steps: Event details will be shared 24 hours prior to the scheduled time. For assistance after receiving the link, reply to this WhatsApp number and click "Get Help." Please carefully review the instructions provided.`
     )
 
     return NextResponse.json(

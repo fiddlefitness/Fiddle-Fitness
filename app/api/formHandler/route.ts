@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createUser } from '../users/route'
+import { statesMapping, genderMapping } from './formDataMapping'
 
 // Function to extract the last 10 digits from a phone number
 function extractLast10Digits(phoneNumber) {
@@ -167,6 +168,12 @@ async function processFlowRequest(decryptedBody) {
   // Handle back navigation
   if (action === 'BACK') {
     if (screen === 'CONFIRMATION') {
+      const state = statesMapping.find((state) => state.id === data?.state)
+      const gender = genderMapping.find((gender) => gender.id === data?.gender)
+      const stateName = state?.title || data?.state || ''
+      const genderName = gender?.title || data?.gender || ''
+
+      console.log('stateName', stateName)
       // Going back from confirmation to registration
       return {
         ...SCREEN_RESPONSES.REGISTRATION,
@@ -175,8 +182,8 @@ async function processFlowRequest(decryptedBody) {
           name: data?.name || '',
           email: data?.email || '',
           yob: data?.yob || '',
-          gender: data?.gender || '',
-          state: data?.state || '',
+          gender: genderName,
+          state: stateName,
           phoneNumber: data?.phoneNumber || '',
         },
       }
@@ -190,6 +197,12 @@ async function processFlowRequest(decryptedBody) {
 
   if (action === 'data_exchange') {
     // Handle the request based on the current screen
+    const state = statesMapping.find((state) => state.id === data?.state)
+    const stateName = state?.title || data?.state || ''
+    const gender = genderMapping.find((gender) => gender.id === data?.gender)
+    const genderName = gender?.title || data?.gender || ''
+
+
     switch (screen) {
       // Handle when user completes REGISTRATION screen
       case 'REGISTRATION':
@@ -199,8 +212,8 @@ async function processFlowRequest(decryptedBody) {
             name: data.name,
             email: data.email,
             yob: data.yob,
-            gender: data.gender,
-            state: data.state,
+            gender: genderName,
+            state: stateName,
             phoneNumber: data.phoneNumber || '',
           },
         }
@@ -240,7 +253,7 @@ async function processFlowRequest(decryptedBody) {
               email: data.email,
               yob: data.yob,
               gender: data.gender,
-              state: data.state,
+              state: stateName,
               phoneNumber: data.phoneNumber || '',
               error_message: 'Failed to create user. Please try again.',
             },
