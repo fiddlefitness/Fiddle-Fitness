@@ -18,7 +18,8 @@ export async function GET(request, { params }) {
         city: true,
         gender: true,
         mobileNumber: true,
-        createdAt: true
+        createdAt: true,
+        fiddleFitnessCoins: true,
       }
     });
     

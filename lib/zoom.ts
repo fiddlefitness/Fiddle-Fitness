@@ -30,7 +30,7 @@ interface ZoomMeetingConfig {
   }
 }
 
-async function getZoomAccessToken(): Promise<string> {
+export async function getZoomAccessToken(): Promise<string> {
   try {
     const accountId = process.env.ZOOM_ACCOUNT_ID
     const clientId = process.env.ZOOM_CLIENT_ID

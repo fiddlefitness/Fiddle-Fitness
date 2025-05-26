@@ -1,8 +1,9 @@
 // File: app/api/whatsapp/registration/route.js
-import { NextResponse } from 'next/server'
+import { extractReferralCode } from '@/lib/referralHelpers'
 import crypto from 'crypto'
+import { NextResponse } from 'next/server'
 import { createUser } from '../users/route'
-import { statesMapping, genderMapping } from './formDataMapping'
+import { genderMapping, statesMapping } from './formDataMapping'
 
 // Function to extract the last 10 digits from a phone number
 function extractLast10Digits(phoneNumber) {
@@ -185,6 +186,7 @@ async function processFlowRequest(decryptedBody) {
           gender: genderName,
           state: stateName,
           phoneNumber: data?.phoneNumber || '',
+          referral_code: data?.referral_code || '',
         },
       }
     }
@@ -202,10 +204,47 @@ async function processFlowRequest(decryptedBody) {
     const gender = genderMapping.find((gender) => gender.id === data?.gender)
     const genderName = gender?.title || data?.gender || ''
 
-
     switch (screen) {
       // Handle when user completes REGISTRATION screen
       case 'REGISTRATION':
+        console.log(data, 'data in registration')
+        
+        // Handle referral code validation
+        let referralMessage = data.referral_code || '';
+        
+        if (data.referral_code) {
+          // Validate the referral code by calling createUser with isFormValidation flag
+          const mobileNumber = extractLast10Digits(flow_token);
+          
+          try {
+            const validationRequest = {
+              json: async () => ({
+                name: data.name,
+                email: data.email,
+                yearOfBirth: String(data.yob) || null,
+                gender: data.gender,
+                state: data.state,
+                mobileNumber,
+                referralCode: data.referral_code,
+                isFormValidation: true
+              }),
+            };
+            
+            const response = await createUser(validationRequest);
+            const responseData = await response.json();
+            
+            // If validation returned a formatted code or error message
+            if (responseData.referralCode) {
+              referralMessage = responseData.referralCode;
+            } else {
+              referralMessage = "INVALID CODE!";
+            }
+          } catch (error) {
+            console.error("Error validating referral code:", error);
+            referralMessage = "Error validating code";
+          }
+        }
+        
         return {
           ...SCREEN_RESPONSES.CONFIRMATION,
           data: {
@@ -215,6 +254,7 @@ async function processFlowRequest(decryptedBody) {
             gender: genderName,
             state: stateName,
             phoneNumber: data.phoneNumber || '',
+            referral_code: referralMessage,
           },
         }
 
@@ -223,7 +263,16 @@ async function processFlowRequest(decryptedBody) {
         // Process user registration
         try {
           // Format user data for createUser function
-          const mobileNumber = extractLast10Digits(flow_token)
+          const mobileNumber = extractLast10Digits(flow_token);
+          
+          // Extract just the code part if it's in the formatted form
+          let referralCode = data.referral_code || null;
+          if (referralCode && !referralCode.includes("INVALID")) {
+            referralCode = extractReferralCode(referralCode);
+          } else if (referralCode && referralCode.includes("INVALID")) {
+            referralCode = null; // Don't use invalid codes
+          }
+          
           const userRequest = {
             json: async () => ({
               name: data.name,
@@ -232,6 +281,7 @@ async function processFlowRequest(decryptedBody) {
               gender: data.gender,
               state: data.state,
               mobileNumber,
+              referralCode: referralCode,
             }),
           }
 
@@ -255,6 +305,7 @@ async function processFlowRequest(decryptedBody) {
               gender: data.gender,
               state: stateName,
               phoneNumber: data.phoneNumber || '',
+              referral_code: data.referral_code || '',
               error_message: 'Failed to create user. Please try again.',
             },
           }
@@ -267,9 +318,9 @@ async function processFlowRequest(decryptedBody) {
           data: JSON.parse(JSON.stringify({
             extension_message_response: {
               params: {
-            flow_token: decryptedBody.flow_token || 'unused',
-            optional_param1: '<value1>',
-            optional_param2: '<value2>',
+                flow_token: decryptedBody.flow_token || 'unused',
+                optional_param1: '<value1>',
+                optional_param2: '<value2>',
               },
             },
           })),
@@ -297,35 +348,7 @@ export async function POST(request) {
     console.log('Received encrypted request:', body)
 
     // Get the private key from environment variables
-    // const PRIVATE_KEY = process.env.WHATSAPP_FLOW_PRIVATE_KEY;
-    const PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC+FxVlOO/UAyv0
-zqSvCifrTc/XyST1zE+UeTDt9K3a4KTXEiWhLJKptuv01Okz4s7g7rfiruhg31Jh
-0n/QnaO2OyRro5F4kNGNEgaW7Xy+ZQWtA9mONakQLur1d0iJ/oufwEHMpZ0vWD+R
-kyel0+PjRE1hU8NQq1tOW9RNsdsqq/LppJS+YhcKHgEiwR29fsYTcEgJ4qVK3yGg
-tckBYXfGg6A9mvfoQ5Guc/9AMRvxag4aA8XdRXBioawMlpauJ3gdrdpkEDXzLCGn
-jAABW+XdjC+sOJzCEv6NtofUM53HAZlH7Eg/AUEG2JlKalj68R+LwyuQx2x9Gl2E
-1V980xZtAgMBAAECggEAAIzaf8AW6WZFgZr6Szf3Do8pvOAE6/OL6fov74qcPIxs
-MGO7lcL7oLGExGERf2Zr+AptSuL74rUB4lfEqeLkQcdp/VLFL3CDpd93u+pE5RT2
-1JpKDjk80PQ0CLuwIJc8m/IumT3ZXcNMmc4E7jh5e7HIABzQGBvgMt1kdTqOz8KN
-itP+SKYmNR43l3AUGcbUdhxxrY4yuU4FUfcosJCt6WEw7nG+xKxEtRm+/pKYz07f
-ZF8ilG7bRELVOWzvshcngiZc7Li0p/8cje7vqu9NjdxHtRzHNHOdOn1cmsvPOYg/
-nGsua3rednymTIKCOplVESjFlurj9/FOaUtZuNqWwQKBgQDiZqTKBHHYwH0kxaje
-H38PBG8MD0FlojNuILwZOKryJVDhIuOgKwf1GbTcMC+6ta+1wo7v83XfFfW1Si6k
-n2HF6WIuP42iI+InL1a5bgOuWZWqnLBkzB/UWTl9I2x/xZxnWubzBLvjYJB67PJc
-mup+CvoZpDo8t8RUEdr8/ycfQQKBgQDW8SnZ+p6HBuPxQoL/X0OVP/DWUH4oma7e
-cPidc0Tay8HnEgF3ye3WVpSl8zRVZzEYxWg6/9OliKq1hTKWcL3D8AR/AaiRIzx9
-PUDfb1vn0nW8DKo9uT1oqyBImACOkXUL1pV20sqY9hcTF11sNDu2sdlEIE+PvQSW
-Q+DVc2SYLQKBgQCnYiXxacnV67JaLnzEBFtG+gszyk+aWYpWoIMQzpGsRyR93vKV
-p1rRvji2FjYjf1IyOm69Pq1lyvGHIBpOAbwiu4KoGLqZJph8SgZ/P7QfAgKiSggr
-7bKWp4TWXQtJiAszasSW5WgYGnuXNnmVN7+ogmsX7BBWdbMESNMz+1ysQQKBgBCl
-1SwA8U5cBkOldyf4ZO+maCzxRxQ18wlfjqIDT43ywi33gw2YIke7pP/FeoQy3eah
-Q5VuQyJLF42/p09npAsNCAweQMQdCo5YtDGaGnA2KNBL2tO1CUCWIIX+3+wq7/ne
-wOzXHsICLX9ZC+9ZjFZ2J/HS3tavOS+6Siu+KEhxAoGBALQJZFdHzB/NniW36jw4
-G4lh/StPGPrSm1MNcBLBLIOdl0p56Y8b3iOsane9UMRiKHEQwFxvufb5jijoJX+p
-CWf4H03UbN/7Bwgelpp4xd4c7XLHPgvQVKCuDrpfrv0t5PWCrwBb324q9ouAUb/R
-wXf3wtLxDH0PM7mvAhsCR+BS
------END PRIVATE KEY-----`
+    const PRIVATE_KEY = process.env.WHATSAPP_FLOW_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
     if (!PRIVATE_KEY) {
       console.error('Missing WHATSAPP_FLOW_PRIVATE_KEY environment variable')

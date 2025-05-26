@@ -4,6 +4,28 @@ import { extractLast10Digits } from '@/lib/formatMobileNumber';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
+// Function to generate a random 5-digit alphanumeric (lowercase) referral code
+function generateReferralCode(): string {
+  const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < 5; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return result;
+}
+
+// Function to validate referral code and get referrer details
+async function validateReferralCode(referralCode: string) {
+  if (!referralCode) return null;
+  
+  const referrer = await prisma.user.findUnique({
+    where: { referralCode },
+    select: { id: true, name: true, referralCode: true }
+  });
+  
+  return referrer;
+}
+
 // Get all users
 async function getUsers(request: Request) {
   try {
@@ -118,9 +140,38 @@ export async function createUser(request: Request) {
       }
     });
     
+    // If this is a form validation request with a referral code
+    if (data.isFormValidation && data.referralCode) {
+      const referrer = await validateReferralCode(data.referralCode);
+      
+      if (!referrer) {
+        // Return with invalid code message
+        return NextResponse.json({
+          ...data,
+          referralCode: "INVALID CODE!"
+        });
+      }
+      
+      // Return with formatted referral code that includes referrer's name
+      return NextResponse.json({
+        ...data,
+        referralCode: `${referrer.referralCode} - ${referrer.name}`
+      });
+    }
+    
     let user;
     
-    console.log(data.yearOfBirth)
+    // Process referral code if provided in the confirmation step
+    let referrerId = null;
+    if (data.referralCode && !data.isFormValidation) {
+      // Extract the actual referral code from the formatted string if needed
+      // Format: "XYZAB - Kapil Bamotriya"
+      const referralCodeOnly = data.referralCode.split(' - ')[0];
+      const referrer = await validateReferralCode(referralCodeOnly);
+      if (referrer) {
+        referrerId = referrer.id;
+      }
+    }
     
     if (existingUser) {
       // Update existing user if needed
@@ -134,23 +185,43 @@ export async function createUser(request: Request) {
           city: data.state || existingUser.city,
           gender: data.gender || existingUser.gender,
           yearOfBirth: data.yearOfBirth || existingUser.yearOfBirth,
+          // Don't update referral relationships for existing users in this implementation
         }
       });
     } else {
-      // Create new user
+      // Generate a unique referral code
+      let referralCode = generateReferralCode();
+      let isUniqueCode = false;
+      
+      // Ensure the referral code is unique
+      while (!isUniqueCode) {
+        const existingCode = await prisma.user.findUnique({
+          where: { referralCode }
+        });
+        
+        if (!existingCode) {
+          isUniqueCode = true;
+        } else {
+          referralCode = generateReferralCode();
+        }
+      }
+      
+      // Create new user with referral code and referrer if applicable
       user = await prisma.user.create({
         data: {
           name: data.name,
-          email: data.email,
+          email: data.email || '',
           city: data.state,
           gender: data.gender,
           mobileNumber: mobileNumber,
           yearOfBirth: data.yearOfBirth,
+          referralCode: referralCode,
+          referredById: referrerId,
         }
       });
     }
     
-    // Return the user and upcoming event categories
+    // Return the user
     return NextResponse.json({
       user
     }, { status: existingUser ? 200 : 201 });

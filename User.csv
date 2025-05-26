@@ -1,0 +1,2 @@
+"id","name","email","city","gender","mobileNumber","yearOfBirth","createdAt","updatedAt","conversationState","lastInteraction","contextData"
+"cm9fam45a0003ih04xudvdzh9","Hemant Kanojia","hemantkanojia7@gmail.com","Telangana","Male","8827080482","1987","2025-04-13T06:57:51.743Z","2025-04-13T06:59:09.343Z","idle","2025-04-13T06:59:09.342Z","{""eventIds"":[""cm9faffd00001ih04xt1fjtab""],""lastAction"":""idle"",""selectedEventId"":""cm9faffd00001ih04xt1fjtab"",""selectedCategory"":""cat_zumba"",""registeredEventIds"":null,""lastActionTimestamp"":""2025-04-13T06:59:09.342Z""}"

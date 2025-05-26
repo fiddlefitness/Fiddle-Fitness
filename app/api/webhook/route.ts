@@ -1,24 +1,10 @@
 import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
 import { extractLast10Digits } from '@/lib/formatMobileNumber'
-import { prisma } from '@/lib/prisma'
-import {
-  sendFlowTemplate,
-  sendHelpTroubleshootingMessage,
-  sendPaymentLinkTemplate,
-  sendTextMessage,
-  sendUserHelpMessageToAdmin,
-  sendWelcomeMessageTemplate,
-} from '@/lib/whatsapp'
-import {
-  limitListRows,
-  truncateBody,
-  truncateFooter,
-  truncateHeader,
-  truncateListDescription,
-  truncateListTitle,
-} from '@/lib/whatsappLimits'
+import { PrismaClient } from '@prisma/client'
 import axios from 'axios'
 import { NextRequest } from 'next/server'
+
+const prisma = new PrismaClient()
 
 // Types
 interface WhatsAppMessage {
@@ -61,7 +47,6 @@ interface User {
   id: string
   mobileNumber: string
   name?: string
-  email?: string
   conversationState?: ConversationState
   lastInteraction?: Date
   contextData?: {
@@ -69,8 +54,6 @@ interface User {
     eventIds?: string[]
     selectedEventId?: string
     registeredEventIds?: string[]
-    lastAction?: string
-    lastActionTimestamp?: Date
   }
 }
 
@@ -80,160 +63,548 @@ const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID
 const WHATSAPP_API_URL = `https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`
 const VERSION = 'v18.0' // Meta Graph API version
 const flowBaseUrl = `https://graph.facebook.com/${VERSION}/${PHONE_NUMBER_ID}`
-const CONTEXT_TIMEOUT_MINUTES = 10
 
 // Define conversation states
 enum ConversationState {
   IDLE = 'idle',
-  AWAITING_MEDICAL_CHECK = 'awaiting_medical_check',
   AWAITING_CATEGORY_SELECTION = 'awaiting_category_selection',
   AWAITING_EVENT_SELECTION = 'awaiting_event_selection',
   AWAITING_REGISTRATION_CONFIRMATION = 'awaiting_registration_confirmation',
   AWAITING_REGISTERED_EVENT_SELECTION = 'awaiting_registered_event_selection',
 }
 
-// Add type definition for EVENT_CATEGORIES
-interface Category {
-  value: string
-  label: string
-}
-
-// Update Event interface to match Prisma model
-interface Event {
-  id: string
-  title: string
-  description: string | null
-  eventDate: Date
-  eventTime: string
-  location: string | null
-  category: string
-  price: number | null
-  maxCapacity: number
-  poolCapacity: number
-  registrationDeadline: Date | null
-  createdAt: Date
-  updatedAt: Date
-}
-
-// State Management Functions
-async function updateUserState(
-  user: User,
-  newState: ConversationState,
-  contextData?: any,
-) {
-  const updateData: any = {
-    lastInteraction: new Date(),
-    conversationState: newState,
-  }
-
-  if (contextData) {
-    updateData.contextData = {
-      ...(user.contextData || {}),
-      ...contextData,
-      lastAction: newState,
-      lastActionTimestamp: new Date(),
-    }
-  }
-
-  return prisma.user.update({
-    where: { id: user.id },
-    data: updateData,
-  })
-}
-
-async function checkContextTimeout(user: User): Promise<boolean> {
-  if (!user.lastInteraction) return true
-  const timeoutMinutesAgo = new Date(
-    Date.now() - CONTEXT_TIMEOUT_MINUTES * 60 * 1000,
-  )
-  return new Date(user.lastInteraction) < timeoutMinutesAgo
-}
-
-async function resetUserState(user: User) {
-  return updateUserState(user, ConversationState.IDLE, {
-    selectedCategory: null,
-    eventIds: null,
-    selectedEventId: null,
-    registeredEventIds: null,
-    lastAction: null,
-    lastActionTimestamp: null,
-  })
-}
-
-// Message Utility Functions
-// Remove the local implementation of sendTextMessage
-// Remove the local implementation of sendFlowTemplate
-// Remove the local implementation of sendWelcomeMessageTemplate
-// Remove the local implementation of sendSessionConfirmationTemplate
-
-// now we will create a function to send a message with image or video to user
-async function sendImageOrVideoMessage(
-  phoneNumber: string,
-  imageOrVideoUrl: string,
-  message: string,
-) {
+// Process incoming messages
+export async function POST(req: NextRequest) {
   try {
-    await axios({
-      method: 'POST',
-      url: WHATSAPP_API_URL,
+    const body = await req.json()
+
+    // Check if this is a WhatsApp message
+    if (body?.object && body?.entry?.length > 0) {
+      const entry = body.entry[0]
+
+      // Make sure it's a WhatsApp Business Account
+      if (entry?.changes?.length > 0) {
+        const change = entry.changes[0]
+
+        if (change?.value?.messages?.length > 0) {
+          // Extract message details
+          const message = change.value.messages[0]
+          let from = message.from // User's phone number
+          from = extractLast10Digits(from) // Extract last 10 digits
+          const messageId = message.id
+
+          console.log(`Received message from ${from}:`, JSON.stringify(message))
+
+          // before actually checing the message, check if the body of the message is Hello
+          if (message.text.body.toLowerCase().includes('hello')) {
+            await sendTextMessage(from, '👋 Hello! How can I help you today?')
+            return
+          }
+
+          // Process the message based on type and user state
+          await handleIncomingMessage(from, message)
+        }
+      }
+    }
+
+    return new Response('OK', { status: 200 })
+  } catch (error) {
+    console.error('Error processing webhook:', error)
+    return new Response('Server Error', { status: 500 })
+  }
+}
+
+/**
+ * Main handler for incoming messages
+ */
+async function handleIncomingMessage(phoneNumber: string, message: WhatsAppMessage) {
+  try {
+    // Check if user exists, create if not
+    console.log('Checking user:', phoneNumber)
+    let user = await prisma.user.findUnique({
+      where: { mobileNumber: phoneNumber },
+    })
+    console.log('User:', user)
+
+    if (!user) {
+      // Create a new user with minimal info
+      console.log('Creating new user:', phoneNumber)
+      // the new user form will be added here right now we are only figuring out the flow for the existing user
+      sendFlowTemplate(phoneNumber, 'enter_your_details')
+      return
+    }
+
+    // Handle conversation reset and update last interaction in a single operation
+    if (user) {
+      const updateData: any = {
+        lastInteraction: new Date(),
+      }
+
+      // Check if last interaction was more than 15 minutes ago
+      if (user.lastInteraction) {
+        const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000)
+        if (new Date(user.lastInteraction) < fifteenMinutesAgo) {
+          console.log('Reset conversation state to IDLE due to inactivity')
+          updateData.conversationState = ConversationState.IDLE
+        }
+      } else {
+        // If no last interaction, ensure we have a conversation state
+        updateData.conversationState =
+          user.conversationState || ConversationState.IDLE
+      }
+
+      // Update user with a single database call
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: updateData,
+      })
+    }
+
+    // Check if this is a button response
+    if (
+      user &&
+      message.type === 'interactive' &&
+      message.interactive?.type === 'button_reply'
+    ) {
+      const handled = await handleButtonResponse(user, message)
+      if (handled) return // Exit if we handled the button
+    }
+
+    if (
+      message?.type === 'interactive' &&
+      message.interactive?.type === 'nfm_reply'
+    ) {
+      // This is a flow response
+      const flowResponse = message.interactive.nfm_reply
+      if (!flowResponse) {
+        console.error('Invalid flow response structure')
+        return
+      }
+      
+      const flowToken = flowResponse.response_json.flow_token
+      const body = flowResponse.body
+      const name = flowResponse.name
+
+      if (body === 'Sent' && name === 'flow') {
+        console.log('Flow response received with token:', flowToken)
+
+        await sendTextMessage(
+          phoneNumber,
+          'Welcome aboard, we are glad to have you here!',
+        )
+        await sendCategoryList(user)
+        return // Exit early as flow responses don't need further processing
+      }
+    }
+
+    // Handle message based on current conversation state
+    switch (user?.conversationState) {
+      case ConversationState.IDLE:
+        await handleIdleState(user, message)
+        break
+
+      case ConversationState.AWAITING_CATEGORY_SELECTION:
+        await handleCategorySelection(user, message)
+        break
+
+      case ConversationState.AWAITING_EVENT_SELECTION:
+        await handleEventSelection(user, message)
+        break
+
+      case ConversationState.AWAITING_REGISTRATION_CONFIRMATION:
+        await handleRegistrationConfirmation(user, message)
+        break
+
+      case ConversationState.AWAITING_REGISTERED_EVENT_SELECTION:
+        await handleRegisteredEventSelection(user, message)
+        break
+
+      default:
+        // Reset to idle state if unknown and show categories
+        await sendCategoryList(user)
+        break
+    }
+  } catch (error) {
+    console.error('Error handling message:')
+    if (axios.isAxiosError(error)) {
+      // The request was made and server responded with non-2xx status
+      console.error('Error data:', error.response?.data)
+      // console.error('Status:', error.response.status)
+      // console.error('Headers:', error.response.headers)
+    } else if (error instanceof Error) {
+      // Something happened in setting up the request
+      console.error('Error message:', error.message)
+    }
+    console.error('Error config:', (error as any).config)
+    // Send error message to user
+    await sendTextMessage(
+      phoneNumber,
+      'Sorry, an error occurred. Please try again later.',
+    )
+  }
+}
+
+/**
+ * Handle messages when user is in idle state
+ */
+async function handleIdleState(user: any, message: any) {
+  try {
+    // Send welcome message
+    await sendTextMessage(
+      user.mobileNumber,
+      `Hello ${user.name} 👋, welcome back! Let's explore your fitness journey together.`,
+    )
+
+    // Check if user is registered for any events
+    const userRegisteredEvents = await prisma.eventRegistration.findMany({
+      where: {
+        userId: user.id,
+      },
+      include: {
+        event: true,
+      },
+    })
+
+    if (userRegisteredEvents.length > 0) {
+      // User has registered events, offer two options
+      const buttons = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: user.mobileNumber,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: {
+            text: 'What would you like to do today?',
+          },
+          action: {
+            buttons: [
+              {
+                type: 'reply',
+                reply: {
+                  id: 'view_registered_events',
+                  title: 'View My Events',
+                },
+              },
+              {
+                type: 'reply',
+                reply: {
+                  id: 'register_new_event',
+                  title: 'Register New Event',
+                },
+              },
+            ],
+          },
+        },
+      }
+
+      // Send buttons and update state to handle the response
+      await axios.post(WHATSAPP_API_URL, buttons, {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      })
+    } else {
+      // User has no registered events, directly show event categories
+      await sendCategoryList(user)
+    }
+  } catch (error) {
+    console.error('Error in handleIdleState:', error)
+    await sendTextMessage(
+      user.mobileNumber,
+      'Sorry, I encountered an error. Please try again later.',
+    )
+  }
+}
+
+/**
+ * Send list of registered events to user
+ */
+async function sendRegisteredEventsList(user: any) {
+  try {
+    // Fetch user's registered events
+    const registeredEvents = await prisma.eventRegistration.findMany({
+      where: {
+        userId: user.id,
+      },
+      include: {
+        event: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    })
+
+    if (registeredEvents.length === 0) {
+      await sendTextMessage(
+        user.mobileNumber,
+        "You are not registered for any events yet. Let's find some events for you!",
+      )
+
+      // Show category list since user has no registered events
+      await sendCategoryList(user)
+      return
+    }
+
+    // Format events for display
+    const formattedEvents = registeredEvents.map(registration => {
+      const event = registration.event
+      const eventDate = new Date(event.eventDate)
+      const formattedDate = eventDate.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      })
+
+      return {
+        id: event.id,
+        title: event.title,
+        description: `${formattedDate} - ${event.eventTime}`,
+      }
+    })
+
+    // Create interactive list message
+    const listMessage = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: user.mobileNumber,
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        header: {
+          type: 'text',
+          text: 'Your Registered Events',
+        },
+        body: {
+          text: "Here are the events you've registered for. Select one to view details.",
+        },
+        footer: {
+          text: 'Select an event for more details',
+        },
+        action: {
+          button: 'View Events',
+          sections: [
+            {
+              title: 'Your Events',
+              rows: formattedEvents.map(event => ({
+                id: event.id,
+                title: event.title,
+                description: event.description,
+              })),
+            },
+          ],
+        },
+      },
+    }
+
+    // Send list message and update user state
+    await axios.post(WHATSAPP_API_URL, listMessage, {
       headers: {
         Authorization: `Bearer ${WHATSAPP_TOKEN}`,
         'Content-Type': 'application/json',
       },
+    })
+
+    // Update user state to awaiting registered event selection
+    await prisma.user.update({
+      where: { id: user.id },
       data: {
-        messaging_product: 'whatsapp',
-        to: phoneNumber,
-        type: 'interactive',
-        interactive: {
-          type: 'image',
-          header: {
-            type: 'image',
-            image: {
-              link: imageOrVideoUrl,
-            },
-          },
-          body: {
-            text: message,
-          },
+        conversationState:
+          ConversationState.AWAITING_REGISTERED_EVENT_SELECTION,
+        contextData: {
+          ...user.contextData,
+          registeredEventIds: formattedEvents.map(e => e.id),
         },
       },
     })
   } catch (error) {
-    console.error('Error sending image or video message:', error)
+    console.error('Error sending registered events list:', error)
     throw error
   }
 }
 
-async function sendInteractiveMessage(phoneNumber: string, message: any) {
+/**
+ * Handle user selection of registered event
+ */
+async function handleRegisteredEventSelection(user: any, message: any) {
   try {
-    await axios.post(WHATSAPP_API_URL, message, {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        'Content-Type': 'application/json',
+    // Extract selected event ID from the interactive message
+    let selectedEventId = null
+
+    if (
+      message.type === 'interactive' &&
+      message.interactive?.type === 'list_reply'
+    ) {
+      selectedEventId = message.interactive.list_reply.id
+    } else if (message.type === 'text') {
+      // Try to find event by ID in text
+      const text = message.text.body.trim()
+
+      // Check if text matches any registered event ID
+      if (user.contextData?.registeredEventIds?.includes(text)) {
+        selectedEventId = text
+      }
+    }
+
+    if (!selectedEventId) {
+      await sendTextMessage(
+        user.mobileNumber,
+        "I couldn't identify which event you selected. Please try again.",
+      )
+
+      // Show registered events list again
+      await sendRegisteredEventsList(user)
+      return
+    }
+
+    // Fetch the selected event details with pool information
+    const event = await prisma.event.findUnique({
+      where: { id: selectedEventId },
+      include: {
+        eventTrainers: {
+          include: {
+            trainer: true,
+          },
+        },
+        pools: {
+          include: {
+            attendees: {
+              where: {
+                userId: user.id,
+              },
+            },
+          },
+        },
       },
     })
+
+    if (!event) {
+      await sendTextMessage(
+        user.mobileNumber,
+        "Sorry, I couldn't find details for that event. It may have been removed.",
+      )
+
+      // Reset state to idle
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { conversationState: ConversationState.IDLE },
+      })
+
+      return
+    }
+
+    // Format event date and time
+    const eventDate = new Date(event.eventDate)
+    const formattedDate = eventDate.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    })
+
+    // Format trainer names
+    const trainerNames =
+      event.eventTrainers.map(et => et.trainer.name).join(', ') || 'TBA'
+
+    // Check if pools are assigned and user is in a pool
+    const poolsAssigned = event.poolsAssigned
+    const userPool = event.pools.find(pool => pool.attendees.length > 0)
+
+    let messageBody =
+      `📅 *Date:* ${formattedDate}\n` +
+      `⏰ *Time:* ${event.eventTime}\n` +
+      `📍 *Location:* ${event.location || 'Online'}\n` +
+      `👨‍🏫 *Trainers:* ${trainerNames}\n\n` +
+      `${event.description || 'Join this exciting event!'}\n\n`
+
+    if (poolsAssigned && userPool) {
+      // Pool is created and user is assigned
+      let meetLinkText = userPool.meetLink || 'Link will be shared soon';
+      
+      // Add instructions for Google Meet links
+      if (meetLinkText.includes('meet.google.com')) {
+        messageBody +=
+          `🎉 *Your Event is Ready!*\n\n` +
+          `You've been assigned to: *${userPool.name || 'Main Pool'}*\n` +
+          `📱 *Meeting Link:* ${meetLinkText}\n\n` +
+          `*Note:* You may need to request access to join the meeting. This happens when the Google Meet security settings require manual admission of participants. Make sure to:\n` +
+          `- Join using the same Google account email that was used for registration\n` +
+          `- Join a few minutes before the event starts\n` +
+          `- Keep your display name clear and recognizable\n\n` +
+          `See you at the event!`
+      } else {
+        messageBody +=
+          `🎉 *Your Event is Ready!*\n\n` +
+          `You've been assigned to: *${userPool.name || 'Main Pool'}*\n` +
+          `📱 *Meeting Link:* ${meetLinkText}\n\n` +
+          `See you at the event!`
+      }
+    } else {
+      // Pool is not created yet
+      messageBody +=
+        `⏳ *Status:* Your registration is confirmed! \n\n` +
+        `You'll receive event details including joining instructions before the event starts.`
+    }
+
+    // Send event details as text message
+    await sendTextMessage(
+      user.mobileNumber,
+      `*${event.title}*\n\n${messageBody}`,
+    )
+
+    // Reset conversation state to idle
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { conversationState: ConversationState.IDLE },
+    })
+
+    // After showing event details, ask if user wants to do something else
+    setTimeout(async () => {
+      await handleIdleState(user, message)
+    }, 2000)
   } catch (error) {
-    console.error('Error sending interactive message:', error)
-    throw error
+    console.error('Error handling registered event selection:', error)
+    await sendTextMessage(
+      user.mobileNumber,
+      'Sorry, I encountered an error while retrieving event details. Please try again later.',
+    )
+
+    // Reset conversation state on error
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { conversationState: ConversationState.IDLE },
+    })
   }
 }
 
-// Event List Functions
-async function sendCategoryList(user: User) {
+/**
+ * Fetch available event categories and send as interactive list
+ */
+async function sendCategoryList(user: any) {
   try {
+    // Fetch upcoming events with categories
     const upcomingCategories = await getUpcomingEventCategories()
-    console.log('upcomingCategoriesfromsendCategoryList', upcomingCategories)
+
+    console.log('Upcoming categories:', upcomingCategories)
+    console.log(
+      'Upcoming categories rows:',
+      upcomingCategories.map(category => ({
+        id: category.value,
+        title: category.label,
+        description: `${category.label} events`,
+      })),
+    )
 
     if (upcomingCategories.length === 0) {
       await sendTextMessage(
         user.mobileNumber,
-        `Thanks for your interest! All seats are currently filled, and we couldn’t accommodate your booking this time. Stay tuned to @fiddle.fitness on Instagram for upcoming slots and updates! \n`,
+        'Sorry, there are no upcoming events available at the moment. Please check back later!',
       )
-
-      await resetUserState(user)
       return
     }
 
+    // Prepare interactive list message for WhatsApp
     const listMessage = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -267,32 +638,43 @@ async function sendCategoryList(user: User) {
       },
     }
 
-    await sendInteractiveMessage(user.mobileNumber, listMessage)
-    await updateUserState(user, ConversationState.AWAITING_CATEGORY_SELECTION)
+    // Send list message via WhatsApp API
+    const response = await axios.post(WHATSAPP_API_URL, listMessage, {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    // Update user state to awaiting category selection
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        conversationState: ConversationState.AWAITING_CATEGORY_SELECTION,
+      },
+    })
+
+    console.log('Category list sent:', response.data)
   } catch (error) {
     console.error('Error sending category list:', error)
     throw error
   }
 }
 
-// Add this helper function at the top with other utility functions
-function getTodayAtMidnight() {
-  const now = new Date()
-  now.setHours(0, 0, 0, 0)
-  return now
-}
-
-// Update getUpcomingEventCategories function
+/**
+ * Get unique categories from upcoming events
+ */
 async function getUpcomingEventCategories() {
-  const now = getTodayAtMidnight()
+  const now = new Date()
   const upcomingEvents = await prisma.event.findMany({
     where: {
       eventDate: {
-        gte: now,
+        gt: now,
       },
+      // Only include events with registration open
       OR: [
         { registrationDeadline: null },
-        { registrationDeadline: { gte: now } },
+        { registrationDeadline: { gt: now } },
       ],
     },
     select: {
@@ -303,11 +685,13 @@ async function getUpcomingEventCategories() {
     },
   })
 
+  // Extract unique categories from upcoming events
   const eventCategories = [
     ...new Set(upcomingEvents.map(event => event.category)),
   ]
 
-  return EVENT_CATEGORIES.filter((category: Category) =>
+  // Match with EVENT_CATEGORIES to get full category details
+  return EVENT_CATEGORIES.filter(category =>
     eventCategories.some(
       eventCategory =>
         category.value === eventCategory ||
@@ -317,25 +701,119 @@ async function getUpcomingEventCategories() {
   )
 }
 
-async function sendRegisteredEventsList(user: User) {
+/**
+ * Handle category selection response from user
+ */
+async function handleCategorySelection(user: any, message: any) {
   try {
-    const registeredEvents = await prisma.eventRegistration.findMany({
-      where: { userId: user.id },
-      include: { event: true },
-      orderBy: { createdAt: 'desc' },
-    })
+    // Extract selected category from interactive message response
+    let selectedCategory = null
 
-    if (registeredEvents.length === 0) {
+    console.log('categoryselection', message)
+
+    if (
+      message.type === 'interactive' &&
+      message.interactive?.type === 'list_reply'
+    ) {
+      selectedCategory = message.interactive.list_reply.id
+    } else if (message.type === 'text') {
+      // Try to match text with category values or labels
+      const text = message.text.body.toLowerCase()
+      const matchedCategory = EVENT_CATEGORIES.find(
+        cat =>
+          cat.value.toLowerCase() === text ||
+          cat.label.toLowerCase().includes(text),
+      )
+      if (matchedCategory) {
+        selectedCategory = matchedCategory.value
+      }
+    }
+
+    if (!selectedCategory) {
+      // If category not recognized, ask again
       await sendTextMessage(
         user.mobileNumber,
-        "You are not registered for any events yet. Let's find some events for you!",
+        "Sorry, I couldn't understand your selection. Please choose from the list of categories.",
       )
       await sendCategoryList(user)
       return
     }
 
-    const formattedEvents = registeredEvents.map(registration => {
-      const event = registration.event
+    // Fetch events for selected category
+    const events = await getUpcomingEventsByCategory(selectedCategory)
+
+    if (events.length === 0) {
+      // No events in this category
+      await sendTextMessage(
+        user.mobileNumber,
+        `Sorry, there are no upcoming events in the "${selectedCategory}" category. Would you like to check other categories?`,
+      )
+      // Reset to idle to allow choosing another category
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { conversationState: ConversationState.IDLE },
+      })
+      await sendCategoryList(user)
+      return
+    }
+
+    // Store selected category in user context
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        contextData: { selectedCategory, eventIds: events.map(e => e.id) },
+        conversationState: ConversationState.AWAITING_EVENT_SELECTION,
+      },
+    })
+
+    // Send events list for the selected category
+    await sendEventsList(user.mobileNumber, events, selectedCategory)
+  } catch (error) {
+    console.error('Error handling category selection:', error)
+    throw error
+  }
+}
+
+/**
+ * Fetch upcoming events by category
+ */
+async function getUpcomingEventsByCategory(category: string) {
+  const now = new Date()
+  return prisma.event.findMany({
+    where: {
+      category,
+      eventDate: {
+        gt: now,
+      },
+      OR: [
+        { registrationDeadline: null },
+        { registrationDeadline: { gt: now } },
+      ],
+    },
+    orderBy: {
+      eventDate: 'asc',
+    },
+    take: 10, // Limit to 10 events as WhatsApp lists have limits
+  })
+}
+
+/**
+ * Send list of events to user
+ */
+async function sendEventsList(
+  phoneNumber: string,
+  events: any[],
+  categoryName: string,
+) {
+  try {
+    // Find category label for display
+    const categoryInfo = EVENT_CATEGORIES.find(
+      cat => cat.value === categoryName,
+    )
+    const categoryLabel = categoryInfo ? categoryInfo.label : categoryName
+
+    // Format event dates for display
+    const formattedEvents = events.map(event => {
       const eventDate = new Date(event.eventDate)
       const formattedDate = eventDate.toLocaleDateString('en-US', {
         weekday: 'short',
@@ -346,25 +824,24 @@ async function sendRegisteredEventsList(user: User) {
       return {
         id: event.id,
         title: event.title,
-        description: `happening on ${formattedDate} - ${event.eventTime}`,
+        description: `${formattedDate} - ${event.eventTime}`,
       }
     })
 
-    console.log('formattedEvents', formattedEvents)
-
+    // Create interactive list message
     const listMessage = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
-      to: user.mobileNumber,
+      to: phoneNumber,
       type: 'interactive',
       interactive: {
         type: 'list',
         header: {
           type: 'text',
-          text: 'Your Upcoming Events',
+          text: `${categoryLabel} Events`,
         },
         body: {
-          text: "You're registered for these events",
+          text: `Here are the upcoming ${categoryLabel} events. Select one to view details and register.`,
         },
         footer: {
           text: 'Select an event for more details',
@@ -373,7 +850,7 @@ async function sendRegisteredEventsList(user: User) {
           button: 'View Events',
           sections: [
             {
-              title: 'Your Events',
+              title: 'Upcoming Events',
               rows: formattedEvents.map(event => ({
                 id: event.id,
                 title: event.title,
@@ -385,216 +862,53 @@ async function sendRegisteredEventsList(user: User) {
       },
     }
 
-    await sendInteractiveMessage(user.mobileNumber, listMessage)
-    await updateUserState(
-      user,
-      ConversationState.AWAITING_REGISTERED_EVENT_SELECTION,
-      {
-        registeredEventIds: formattedEvents.map(e => e.id),
+    // Send list message via WhatsApp API
+    await axios.post(WHATSAPP_API_URL, listMessage, {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
       },
-    )
+    })
   } catch (error) {
-    console.error('Error sending registered events list:', error)
+    console.error('Error sending events list:', error)
     throw error
   }
 }
 
-// State Handler Functions
-async function handleIdleState(
-  user: User,
-  message: WhatsAppMessage,
-  forwardedState: boolean = false,
-) {
-  try {
-    if (!forwardedState) {
-      await sendTextMessage(
-        user.mobileNumber,
-        `Hello ${user.name} 👋, Welcome Back! Let's get moving `,
-      )
-    }
+/**
+ * Handle event selection from user
+ */
+async function handleEventSelection(user: any, message: any) {
+  console.log('User selected event:', message)
 
-    const userRegisteredEvents = await prisma.eventRegistration.findMany({
-      where: { userId: user.id },
-      include: { event: true },
-    })
-
-    if (userRegisteredEvents.length > 0) {
-      await sendMainMenu(user.mobileNumber, forwardedState)
-    } else {
-      await handleRegisterNewEvent(user)
-    }
-  } catch (error) {
-    console.error('Error in handleIdleState:', error)
-    await sendTextMessage(
-      user.mobileNumber,
-      'Sorry, I encountered an error. Please try again later.',
+  // First check if this is actually a category selection (with cat_ prefix)
+  if (
+    message.type === 'interactive' &&
+    message.interactive?.type === 'list_reply' &&
+    message.interactive.list_reply.id.startsWith('cat_')
+  ) {
+    console.log(
+      'Category prefix detected:',
+      message.interactive.list_reply.id.substring(4),
     )
+    await handleCategorySelection(user, message)
+    return
   }
-}
 
-async function handleRegisterNewEvent(user: User) {
-  await sendMedicalFitnessCheck(user)
-  await updateUserState(user, ConversationState.AWAITING_MEDICAL_CHECK)
-}
-
-async function handleMedicalFitYes(user: User) {
-  await sendTextMessage(
-    user.mobileNumber,
-    "Thank you for confirming. Let's find the perfect event for you!",
-  )
-  await sendCategoryList(user)
-  await updateUserState(user, ConversationState.AWAITING_CATEGORY_SELECTION)
-}
-
-async function handleMedicalFitNo(user: User) {
-  await sendTextMessage(
-    user.mobileNumber,
-    "Thanks for letting us know. Prioritize your health, and we'll have more sessions soon!",
-  )
-  await resetUserState(user)
-}
-
-// Message Content Functions
-async function sendMainMenu(
-  phoneNumber: string,
-  forwardedState: boolean = false,
-) {
   try {
-    // Check if the user has any events scheduled for today
-    const userWithId = await prisma.user.findUnique({
-      where: { mobileNumber: phoneNumber },
-      select: { id: true },
-    })
-
-    if (!userWithId) {
-      console.log(`User not found with phone number: ${phoneNumber}`)
-      return
-    }
-
-    // Check for today's events
-    const today = new Date()
-    today.setHours(0, 0, 0, 0) // Start of today
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1) // Start of tomorrow
-
-    const todaysEvents = await prisma.eventRegistration.findMany({
-      where: {
-        userId: userWithId.id,
-        event: {
-          eventDate: {
-            gte: today,
-            lt: tomorrow,
-          },
-        },
-      },
-      include: {
-        event: true,
-      },
-    })
-
-    const hasTodayEvent = todaysEvents.length > 0
-    console.log(`User ${phoneNumber} has ${todaysEvents.length} events today`)
-
-    // Prepare buttons based on whether user has an event today
-    const buttons = [
-      {
-        type: 'reply',
-        reply: {
-          id: 'view_registered_events',
-          title: 'View My Events',
-        },
-      },
-      {
-        type: 'reply',
-        reply: {
-          id: 'register_new_event',
-          title: 'Register New Event',
-        },
-      },
-    ]
-
-    // Add Help button if user has an event today
-    if (hasTodayEvent) {
-      buttons.push({
-        type: 'reply',
-        reply: {
-          id: 'help_button',
-          title: 'Need Help?',
-        },
-      })
-    }
-
-    const message = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: phoneNumber,
-      type: 'interactive',
-      interactive: {
-        type: 'button',
-        body: {
-          text: forwardedState
-            ? 'Is there anything else I can help you with?'
-            : 'What would you like to do today?',
-        },
-        action: {
-          buttons: buttons,
-        },
-      },
-    }
-
-    await sendInteractiveMessage(phoneNumber, message)
-  } catch (error) {
-    console.error('Error sending main menu:', error)
-  }
-}
-
-async function sendMedicalFitnessCheck(user: User) {
-  const message = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to: user.mobileNumber,
-    type: 'interactive',
-    interactive: {
-      type: 'button',
-      body: {
-        text: 'Your well-being is important, please consider any health conditions before engaging in physical activity.',
-      },
-      action: {
-        buttons: [
-          {
-            type: 'reply',
-            reply: {
-              id: 'medical_fit_yes',
-              title: 'Count me in',
-            },
-          },
-          {
-            type: 'reply',
-            reply: {
-              id: 'medical_fit_no',
-              title: "I'll skip this one",
-            },
-          },
-        ],
-      },
-    },
-  }
-
-  await sendInteractiveMessage(user.mobileNumber, message)
-}
-
-// Event Selection Handlers
-async function handleEventSelection(user: User, message: WhatsAppMessage) {
-  try {
+    // Extract selected event ID from the interactive message
     let selectedEventId = null
 
     if (
       message.type === 'interactive' &&
       message.interactive?.type === 'list_reply'
     ) {
-      selectedEventId = message.interactive.list_reply?.id
-    } else if (message.type === 'text' && message.text?.body) {
+      selectedEventId = message.interactive.list_reply.id
+    } else if (message.type === 'text') {
+      // Try to find event by ID in text - this is a fallback option
       const text = message.text.body.trim()
+
+      // If the user's contextData contains eventIds, check if text matches any
       if (user.contextData?.eventIds?.includes(text)) {
         selectedEventId = text
       }
@@ -605,11 +919,18 @@ async function handleEventSelection(user: User, message: WhatsAppMessage) {
         user.mobileNumber,
         "I couldn't identify which event you selected. Please try again.",
       )
-      await resetUserState(user)
+
+      // Reset to idle state and show categories again
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { conversationState: ConversationState.IDLE },
+      })
+
       await sendCategoryList(user)
       return
     }
 
+    // Fetch the selected event details from database
     const event = await prisma.event.findUnique({
       where: { id: selectedEventId },
       include: {
@@ -631,21 +952,26 @@ async function handleEventSelection(user: User, message: WhatsAppMessage) {
         user.mobileNumber,
         "Sorry, I couldn't find details for that event. It may have been removed.",
       )
-      await resetUserState(user)
+
+      // Reset state to idle
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { conversationState: ConversationState.IDLE },
+      })
+
       return
     }
 
-    // Add check for registration deadline
-    const now = getTodayAtMidnight()
-    if (event.registrationDeadline && event.registrationDeadline < now) {
-      await sendTextMessage(
-        user.mobileNumber,
-        'Sorry, the registration deadline for this event has passed.',
-      )
-      await resetUserState(user)
-      return
-    }
+    // Format event date and time
+    const eventDate = new Date(event.eventDate)
+    const formattedDate = eventDate.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    })
 
+    // Check if user is already registered
     const isUserRegistered = event.registrations.length > 0
 
     if (isUserRegistered) {
@@ -663,912 +989,289 @@ async function handleEventSelection(user: User, message: WhatsAppMessage) {
           `📝 Meeting details and joining instructions will be shared prior to the event.\n\n` +
           `🎉 We look forward to your participation!`,
       )
-      await resetUserState(user)
-      await handleIdleState(user, message, true)
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          contextData: {
+            ...(user.contextData || {}),
+            selectedEventId,
+          },
+          conversationState: ConversationState.IDLE,
+        },
+      })
+
       return
     }
 
+    // Format trainer names
     const trainerNames =
       event.eventTrainers.map(et => et.trainer.name).join(', ') || 'TBA'
+
+    // Get registration count
     const registrationCount = await prisma.eventRegistration.count({
       where: { eventId: event.id },
     })
+
+    // Calculate spots remaining
     const spotsRemaining = event.maxCapacity - registrationCount
 
-    const messageBody = `Great choice! You're confirmed for ${
-      event.title
-    } on ${new Date(event.eventDate).toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    })} at ${
-      event.eventTime
-    } IST. Kindly complete the payment to secure your spot.`
+    // Construct event details message with proper formatting
+    const messageBody =
+      `📅 *Date:* ${formattedDate}\n` +
+      `⏰ *Time:* ${event.eventTime}\n` +
+      `📍 *Location:* ${event.location || 'Online'}\n` +
+      `👨‍🏫 *Trainers:* ${trainerNames}\n\n` +
+      `${event.description || 'Join this exciting event!'}\n\n` +
+      `*Spots Remaining:* ${spotsRemaining} out of ${event.maxCapacity}`
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_BASE_URL ||
-      'https://fiddle-fitness-fiddle-fitness-projects.vercel.app/'
+    // Build registration URL with proper encoding
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://fiddle-fitness-fiddle-fitness-projects.vercel.app/'
     const registrationUrl = new URL(
       `/payment/${event.id}/${user.mobileNumber}`,
       baseUrl,
     )
 
-    // await sendTextMessage(
-    //   user.mobileNumber,
-    //   `*${
-    //     event.title
-    //   }*\n\n${messageBody}\n\nRegister here: ${registrationUrl.toString()}`,
-    // )
-
-    await sendPaymentLinkTemplate(
-      user.mobileNumber,
-      event.title,
-      new Date(event.eventDate).toLocaleDateString('en-US', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      }),
-      event.eventTime,
-      `/${event.id}/${user.mobileNumber}`,
-    )
-
-    await updateUserState(user, ConversationState.IDLE, {
-      selectedEventId,
-    })
-  } catch (error) {
-    console.error('Error handling event selection:', error)
-    await handleError(error, user.mobileNumber)
-    await resetUserState(user)
-  }
-}
-
-async function handleRegisteredEventSelection(
-  user: User,
-  message: WhatsAppMessage,
-) {
-  try {
-    let selectedEventId = null
-
-    if (
-      message.type === 'interactive' &&
-      message.interactive?.type === 'list_reply'
-    ) {
-      selectedEventId = message.interactive.list_reply?.id
-    } else if (message.type === 'text' && message.text?.body) {
-      const text = message.text.body.trim()
-      if (user.contextData?.registeredEventIds?.includes(text)) {
-        selectedEventId = text
-      }
-    }
-
-    if (!selectedEventId) {
-      await sendTextMessage(
-        user.mobileNumber,
-        "I couldn't identify which event you selected. Please try again.",
-      )
-      await sendRegisteredEventsList(user)
-      return
-    }
-
-    const event = await prisma.event.findUnique({
-      where: { id: selectedEventId },
-      include: {
-        eventTrainers: {
-          include: {
-            trainer: true,
-          },
-        },
-        pools: {
-          include: {
-            attendees: {
-              where: {
-                userId: user.id,
-              },
-            },
-          },
+    // Send interactive button message
+    // Send event details as text message
+    await axios.post(
+      WHATSAPP_API_URL,
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: user.mobileNumber,
+        type: 'text',
+        text: {
+          body: `*${
+            event.title
+          }*\n\n${messageBody}\n\nRegister here: ${registrationUrl.toString()}`,
         },
       },
-    })
-
-    if (!event) {
-      await sendTextMessage(
-        user.mobileNumber,
-        "Sorry, I couldn't find details for that event. It may have been removed.",
-      )
-      await resetUserState(user)
-      return
-    }
-
-    const eventDate = new Date(event.eventDate)
-    const formattedDate = eventDate.toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    })
-
-    const trainerNames =
-      event.eventTrainers.map(et => et.trainer.name).join(', ') || 'TBA'
-    const poolsAssigned = event.poolsAssigned
-    const userPool = event.pools[0] // Get the first (and only) pool
-
-    let messageBody =
-      `📅 *Date:* ${formattedDate}\n` +
-      `⏰ *Time:* ${event.eventTime}\n` +
-      `📍 *Location:* ${event.location || 'Online'}\n` +
-      `👨 *Trainers:* ${trainerNames}\n\n` +
-      `${event.description || 'Join this exciting event!'}\n\n`
-
-    if (poolsAssigned && userPool) {
-      // Get the user's unique meeting link from poolAttendee
-      const userPoolAttendee = await prisma.poolAttendee.findFirst({
-        where: {
-          poolId: userPool.id,
-          userId: user.id,
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          'Content-Type': 'application/json',
         },
-      })
+      },
+    )
 
-      const meetLinkText =
-        userPoolAttendee?.meetLink || 'Link will be shared soon'
-
-      if (meetLinkText.includes('zoom.us')) {
-        messageBody +=
-          `🎉 *Your Event is Ready!*\n\n` +
-          `You've been assigned to: *${userPool.name || 'Main Pool'}*\n` +
-          `📱 *Your Unique Meeting Link:* ${meetLinkText}\n\n` +
-          `*Note:* This is your unique meeting link. Please:\n` +
-          `- Use the same email that was used for registration\n` +
-          `- Join a few minutes before the event starts\n` +
-          `- Keep your display name clear and recognizable\n\n` +
-          `See you at the event!`
-      } else {
-        messageBody +=
-          `🎉 *Your Event is Ready!*\n\n` +
-          `You've been assigned to: *${userPool.name || 'Main Pool'}*\n` +
-          `📱 *Your Unique Meeting Link:* ${meetLinkText}\n\n` +
-          `See you at the event!`
-      }
-    } else {
-      messageBody +=
-        `⏳ *Status:* Your registration is confirmed! \n\n` +
-        `You'll receive event details including joining instructions before the event starts.`
+    // Update user context with the selected event
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        contextData: {
+          ...(user.contextData || {}),
+          selectedEventId,
+        },
+        conversationState: ConversationState.IDLE,
+      },
+    })
+  } catch (error) {
+    console.error('Error sending template message:')
+    if (axios.isAxiosError(error)) {
+      // The request was made and the server responded with a status code that falls out of the range of 2xx
+      console.error('Error data:', error.response?.data)
+      // console.error('Status:', error.response.status);
+    } else if (error instanceof Error) {
+      // Something happened in setting up the request that triggered an error
+      console.error('Error message:', error.message)
     }
-
+    throw error
     await sendTextMessage(
       user.mobileNumber,
-      `*Event Name: ${event.title}*\n\n${messageBody}`,
+      'Sorry, I encountered an error while retrieving event details. Please try again later.',
     )
-    await resetUserState(user)
 
-    setTimeout(async () => {
-      await handleIdleState(user, message, true)
-    }, 2000)
-  } catch (error) {
-    console.error('Error handling registered event selection:', error)
-    await handleError(error, user.mobileNumber)
-    await resetUserState(user)
+    // Reset conversation state on error
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { conversationState: ConversationState.IDLE },
+    })
   }
 }
 
-async function handleRegistrationConfirmation(
-  user: User,
-  message: WhatsAppMessage,
-) {
+/**
+ * Handle registration confirmation
+ */
+async function handleRegistrationConfirmation(user: any, message: any) {
+  // This function would be implemented to handle registration confirmation
+  // For now we'll just send a placeholder response
   await sendTextMessage(
     user.mobileNumber,
     'Registration confirmation flow would be implemented here.',
   )
-  await resetUserState(user)
+
+  // Reset conversation state
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { conversationState: ConversationState.IDLE },
+  })
 }
 
-// Add a new function to handle help requests
-async function handleHelpRequest(user: User) {
+/**
+ * Utility function to send a simple text message
+ */
+export async function sendTextMessage(phoneNumber: string, message: string) {
   try {
-    console.log(`Processing help request for user: ${user.id}`)
-    await sendHelpTroubleshootingMessage(user.mobileNumber)
-    return true
+    const response = await axios({
+      method: 'POST',
+      url: WHATSAPP_API_URL,
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        messaging_product: 'whatsapp',
+        to: phoneNumber,
+        type: 'text',
+        text: {
+          body: message,
+        },
+      },
+    })
   } catch (error) {
-    console.error('Error handling help request:', error)
-    await sendTextMessage(
-      user.mobileNumber,
-      'Sorry, we encountered an error processing your help request. Please try again later.',
-    )
-    return false
+    console.error('Error sending text message:', error)
+    throw error
   }
 }
 
-// Add a function to handle Get Help button click
-async function handleGetHelpButtonClick(user: User) {
+async function sendFlowTemplate(recipient: string, templateName: string, languageCode: string = 'en') {
   try {
-    console.log(`Processing "Get Help" request for user: ${user.id}`)
+    console.log(`Sending flow template "${templateName}" to ${recipient}...`)
 
-    // Get admin phone number from environment variable or use a default
-    const adminPhoneNumber = process.env.ADMIN_PHONE_NUMBER || '8305387299'
-
-    // Send help request to admin
-    await sendUserHelpMessageToAdmin(
-      adminPhoneNumber,
-      user.name || 'User',
-      user.mobileNumber,
-      user.email || '',
-    )
-
-    // Inform the user that help is on the way
-    await sendTextMessage(
-      user.mobileNumber,
-      'Thank you for reaching out. Our team has been notified and will contact you shortly to assist with your issue.',
-    )
-
-    return true
-  } catch (error) {
-    console.error('Error handling Get Help request:', error)
-    await sendTextMessage(
-      user.mobileNumber,
-      'Sorry, we encountered an error while forwarding your help request. Please try again later or contact us directly.',
-    )
-    return false
-  }
-}
-
-// Button Handler
-async function handleButtonResponse(
-  user: User,
-  message: WhatsAppMessage,
-): Promise<boolean> {
-  if (
-    message.type !== 'interactive' ||
-    message.interactive?.type !== 'button_reply'
-  ) {
-    return false
-  }
-
-  const buttonId = message.interactive.button_reply?.id
-  if (!buttonId) return false
-
-  switch (buttonId) {
-    case 'view_registered_events':
-      await sendRegisteredEventsList(user)
-      return true
-    case 'register_new_event':
-      await handleRegisterNewEvent(user)
-      return true
-    case 'medical_fit_yes':
-      await handleMedicalFitYes(user)
-      return true
-    case 'medical_fit_no':
-      await handleMedicalFitNo(user)
-      return true
-    case 'help_button':
-      await handleHelpRequest(user)
-      return true
-    case 'get_help':
-      await handleGetHelpButtonClick(user)
-      return true
-    default:
-      return false
-  }
-}
-
-// Add these new functions for handling reviews
-
-// Send reasons list for unsatisfied ratings (1-3)
-async function sendDissatisfactionReasonsList(
-  phoneNumber: string,
-  eventTitle: string,
-) {
-  try {
-    // Truncate the event title to ensure it fits within WhatsApp's character limits
-    const truncatedEventTitle = truncateHeader(eventTitle)
-
-    const listMessage = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: phoneNumber,
-      type: 'interactive',
-      interactive: {
-        type: 'list',
-        header: {
-          type: 'text',
-          text: 'We Value Your Feedback',
-        },
-        body: {
-          text: truncateBody(
-            `We're sorry to hear that your experience with "${truncatedEventTitle}" didn't meet your expectations. Could you please tell us what aspect of the event didn't work for you?`,
-          ),
-        },
-        footer: {
-          text: truncateFooter('Select a reason'),
-        },
-        action: {
-          button: 'Select Reason',
-          sections: [
+    const response = await axios({
+      method: 'POST',
+      url: `${flowBaseUrl}/messages`,
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: recipient,
+        type: 'template',
+        template: {
+          name: 'enter_your_details',
+          language: {
+            code: 'en',
+          },
+          components: [
+            // If your template has a header (image, document, video, or text)
+            // {
+            //   type: 'header',
+            //   parameters: [
+            //     // For text header
+            //     {
+            //       type: 'text',
+            //       text: 'User Registration',
+            //     },
+            //     // For image header, use this instead:
+            //     // {
+            //     //     type: "image",
+            //     //     image: {
+            //     //         link: "https://example.com/your-image.jpg"
+            //     //     }
+            //     // }
+            //   ],
+            // },
+            // If your template has body parameters (variables in double curly braces like {{1}})
+            // {
+            //   type: 'body',
+            //   parameters: [
+            //     {
+            //       type: 'text',
+            //       text: 'registration form',
+            //     },
+            //     // Add more parameters as needed based on your template
+            //   ],
+            // },
+            // If your template has buttons
             {
-              title: 'Reasons',
-              rows: [
+              type: 'button',
+              sub_type: 'FLOW',
+              index: '0',
+              parameters: [
                 {
-                  id: `reason_audio_video`,
-                  title: 'Audio & Video Quality',
-                  description: 'Issues with streaming quality',
-                },
-                {
-                  id: `reason_trainer`,
-                  title: 'Trainer Effectiveness',
-                  description: 'Issues with trainer performance',
-                },
-                {
-                  id: `reason_content`,
-                  title: 'Choice of Songs',
-                  description: 'Issues with music selection',
-                },
-                {
-                  id: `reason_payment`,
-                  title: 'Payment/Registration',
-                  description: 'Issues with payment or registration',
+                  type: 'action',
+                  action: {
+                    flow_token: recipient, //optional, default is "unused"
+                    flow_action_data: {
+                      flow_action_payload: {
+                        data: {
+                          name: '',
+                          email: '',
+                          age: '',
+                          gender: '',
+                          city: '',
+                          phoneNumber: '',
+                        },
+                      },
+                    },
+                  },
                 },
               ],
             },
           ],
         },
       },
-    }
-
-    await sendInteractiveMessage(phoneNumber, listMessage)
-    return true
-  } catch (error) {
-    console.error('Error sending dissatisfaction reasons list:', error)
-    return false
-  }
-}
-
-// Handle review rating responses
-async function handleReviewResponse(user: User, message: WhatsAppMessage) {
-  // Check for both button replies and list replies
-  if (message.type === 'interactive' && message.interactive) {
-    const isButtonReply = message.interactive.type === 'button_reply'
-    const isListReply = message.interactive.type === 'list_reply'
-
-    if (!isButtonReply && !isListReply) {
-      return false
-    }
-
-    // Extract the rating ID from either button or list reply
-    let ratingId = null
-    if (isButtonReply) {
-      ratingId = message.interactive.button_reply?.id
-    } else if (isListReply) {
-      ratingId = message.interactive.list_reply?.id
-    }
-
-    if (!ratingId || !ratingId.startsWith('rating_')) {
-      return false
-    }
-
-    const rating = parseInt(ratingId.split('_')[1])
-    if (isNaN(rating) || rating < 1 || rating > 5) {
-      return false
-    }
-
-    return await processReviewRating(user, rating)
-  }
-  // Also handle text-based responses for ratings 1 and 2
-  else if (message.type === 'text' && message.text?.body) {
-    const text = message.text.body.trim()
-    // Accept any text input that's a valid rating number (1-5)
-    if (['1', '2', '3', '4', '5'].includes(text)) {
-      const rating = parseInt(text)
-      return await processReviewRating(user, rating)
-    }
-  }
-
-  return false
-}
-
-// Helper function to process a review rating
-async function processReviewRating(user: User, rating: number) {
-  try {
-    console.log(`Processing rating ${rating} for user ${user.id}`)
-
-    // Find the pending review for this user
-    const pendingReview = await prisma.eventReview.findFirst({
-      where: {
-        userId: user.id,
-        status: 'pending',
-        rating: null, // Should not have a rating yet
-      },
-      include: {
-        event: true,
-      },
     })
 
-    if (!pendingReview) {
-      console.log(`No pending review found for user ${user.id}`)
-      await sendTextMessage(
-        user.mobileNumber,
-        'Your response to this survey is already registered',
-      )
-      return true
-    }
-
-    console.log(
-      `Updating review ID: ${pendingReview.id} with rating: ${rating}`,
-    )
-
-    // Update the review with the rating
-    const updatedReview = await prisma.eventReview.update({
-      where: { id: pendingReview.id },
-      data: {
-        rating: rating,
-        status: rating >= 4 ? 'completed' : 'pending', // Only mark as completed for 4-5 ratings
-      },
-    })
-
-    if (rating <= 3) {
-      // For ratings 1-3, ask for reason
-      console.log(`Low rating (${rating}) received, asking for reason`)
-      await sendDissatisfactionReasonsList(
-        user.mobileNumber,
-        pendingReview.event.title,
-      )
-    } else {
-      // For ratings 4-5, thank the user
-      console.log(`High rating (${rating}) received, thanking user`)
-      await sendTextMessage(
-        user.mobileNumber,
-        `Thank you for your positive feedback! We're glad you enjoyed the ${pendingReview.event.title} event.`,
-      )
-    }
-
-    return true
+    console.log('Template message sent successfully!')
+    console.log('Response:', JSON.stringify(response.data, null, 2))
+    return response.data
   } catch (error) {
-    console.error('Error processing review rating:', error)
-    await sendTextMessage(
-      user.mobileNumber,
-      'Sorry, we encountered an error processing your feedback. Please try again later.',
-    )
-    return true
+    console.error('Error sending template message:')
+    if (axios.isAxiosError(error)) {
+      // The request was made and the server responded with a status code that falls out of the range of 2xx
+      console.error('Error data:', error.response?.data)
+      // console.error('Status:', error.response.status);
+    } else if (error instanceof Error) {
+      // Something happened in setting up the request that triggered an error
+      console.error('Error message:', error.message)
+    }
+    throw error
   }
 }
 
-// Handle dissatisfaction reason selection
-async function handleDissatisfactionReason(
-  user: User,
-  message: WhatsAppMessage,
-) {
+// Add this function to handle button responses
+async function handleButtonResponse(user: any, message: any) {
+  // This function should be called from handleIncomingMessage when a button is pressed
   if (
-    message.type !== 'interactive' ||
-    message.interactive?.type !== 'list_reply'
+    message.type === 'interactive' &&
+    message.interactive?.type === 'button_reply'
   ) {
-    return false
-  }
+    const buttonId = message.interactive.button_reply.id
 
-  const replyId = message.interactive.list_reply?.id
-  if (!replyId || !replyId.startsWith('reason_')) {
-    return false
-  }
-
-  try {
-    // Extract just the reason type (audio_video, trainer, etc)
-    const reason = replyId.split('_')[1] // Just get the reason part
-
-    if (!reason) {
-      console.error('Could not extract reason from reply ID:', replyId)
-      return false
+    if (buttonId === 'view_registered_events') {
+      await sendRegisteredEventsList(user)
+    } else if (buttonId === 'register_new_event') {
+      await sendCategoryList(user)
     }
-
-    console.log(`Processing feedback reason: ${reason} for user: ${user.id}`)
-
-    // Find the pending review for this user instead of trying to use ID from the message
-    const pendingReview = await prisma.eventReview.findFirst({
-      where: {
-        userId: user.id,
-        status: 'pending',
-        rating: { not: null }, // Make sure it has a rating (user has already rated)
-      },
-      include: {
-        event: true,
-      },
-    })
-
-    if (!pendingReview) {
-      console.error(`No pending review found for user ${user.id}`)
-      await sendTextMessage(
-        user.mobileNumber,
-        "Sorry, we couldn't find your active review. Please try again later.",
-      )
-      return true
-    }
-
-    // Update the review with the reason
-    const updatedReview = await prisma.eventReview.update({
-      where: { id: pendingReview.id }, // Use the ID from the found review
-      data: {
-        feedback: reason,
-        status: 'completed',
-      },
-      include: {
-        event: true,
-      },
-    })
-
-    // Thank the user for their feedback
-    await sendTextMessage(
-      user.mobileNumber,
-      `Thank you for your detailed feedback about ${updatedReview.event.title}. We appreciate your input and will use it to improve future events.`,
-    )
-
-    return true
-  } catch (error) {
-    console.error('Error processing dissatisfaction reason:', error)
-    await sendTextMessage(
-      user.mobileNumber,
-      'Sorry, we encountered an error processing your feedback. Our team will look into this.',
-    )
-    return true
+    return true // Indicate that we handled the button
   }
+  return false // Not a button response
 }
 
-// Main Message Handler
-async function handleIncomingMessage(
-  phoneNumber: string,
-  message: WhatsAppMessage,
-) {
-  try {
-    // Only process messages that are text, interactive buttons, or list responses
-    if (
-      message.type !== 'text' &&
-      message.type !== 'interactive' &&
-      !message.text?.body &&
-      !(message.interactive?.type === 'button_reply') &&
-      !(message.interactive?.type === 'list_reply') &&
-      !(message.interactive?.type === 'nfm_reply')
-    ) {
-      // Ignore non-actionable webhook events like reactions, status updates etc
-      return
-    }
-
-    let userData = await prisma.user.findUnique({
-      where: { mobileNumber: phoneNumber },
-    })
-    if (!userData) {
-      // await sendTextMessage(phoneNumber, "Hi there! 👋 Welcome to Fiddle Fitness 💪. We're excited & ready to help you on your fitness journey! 🎯")
-      // Since these are async calls, we need to wait for the welcome message to complete before sending flow template
-      try {
-        // Send welcome message first and wait for it to complete
-        await sendWelcomeMessageTemplate(
-          phoneNumber,
-          'https://images.pexels.com/photos/4720236/pexels-photo-4720236.jpeg',
-        )
-        // Add a small delay to ensure messages are sent in order
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        // Then send the flow template
-        await sendFlowTemplate(phoneNumber, 'enter_your_details')
-      } catch (error) {
-        console.error('Error sending welcome sequence:', error)
-      }
-      return
-    }
-
-    const user = convertToUser(userData)
-
-    // Handle flow responses
-    if (
-      message.type === 'interactive' &&
-      message.interactive?.type === 'nfm_reply'
-    ) {
-      const flowResponse = message.interactive.nfm_reply
-      if (!flowResponse) {
-        console.error('Invalid flow response structure')
-        return
-      }
-
-      if (flowResponse.body === 'Sent' && flowResponse.name === 'flow') {
-        await sendTextMessage(
-          phoneNumber,
-          `Thanks ${user?.name}, we now know you well. Thrilled you're here!`,
-        )
-        await handleRegisterNewEvent(user)
-        return
-      }
-    }
-
-    // Try handling review responses first - BEFORE checking context timeout
-    if (message.type === 'interactive' && message.interactive) {
-      // Check if this is a review rating response (both button and list replies)
-      if (
-        (message.interactive.type === 'button_reply' &&
-          message.interactive.button_reply?.id?.startsWith('rating_')) ||
-        (message.interactive.type === 'list_reply' &&
-          message.interactive.list_reply?.id?.startsWith('rating_'))
-      ) {
-        const handled = await handleReviewResponse(user, message)
-        if (handled) return // Exit early, don't process any further logic
-      }
-
-      // Check if this is a dissatisfaction reason response
-      if (
-        message.interactive.type === 'list_reply' &&
-        message.interactive.list_reply?.id?.startsWith('reason_')
-      ) {
-        const handled = await handleDissatisfactionReason(user, message)
-        if (handled) return // Exit early, don't process any further logic
-      }
-    }
-
-    // Check context timeout AFTER handling review responses
-    // This prevents the welcome message from appearing after a review
-    const isContextTimeout = await checkContextTimeout(user)
-    if (isContextTimeout) {
-      await resetUserState(user)
-      await handleIdleState(user, message)
-      return // Return after handling idle state to prevent further processing
-    }
-
-    // Handle button responses
-    if (
-      message.type === 'interactive' &&
-      message.interactive?.type === 'button_reply'
-    ) {
-      const handled = await handleButtonResponse(user, message)
-      if (handled) return
-    }
-
-    // Handle state-based messages
-    switch (user.conversationState) {
-      case ConversationState.IDLE:
-        await handleIdleState(user, message)
-        break
-      case ConversationState.AWAITING_MEDICAL_CHECK:
-        await handleButtonResponse(user, message)
-        break
-      case ConversationState.AWAITING_CATEGORY_SELECTION:
-        await handleCategorySelection(user, message)
-        break
-      case ConversationState.AWAITING_EVENT_SELECTION:
-        await handleEventSelection(user, message)
-        break
-      case ConversationState.AWAITING_REGISTRATION_CONFIRMATION:
-        await handleRegistrationConfirmation(user, message)
-        break
-      case ConversationState.AWAITING_REGISTERED_EVENT_SELECTION:
-        await handleRegisteredEventSelection(user, message)
-        break
-      default:
-        await resetUserState(user)
-        await handleIdleState(user, message)
-    }
-  } catch (error) {
-    await handleError(error, phoneNumber)
-  }
-}
-
-// Error Handler
-async function handleError(error: any, phoneNumber: string) {
-  console.error('Error handling message:')
-  if (axios.isAxiosError(error)) {
-    console.error('Error data:', error.response?.data)
-  } else if (error instanceof Error) {
-    console.error('Error message:', error.message)
-  }
-  console.error('Error config:', (error as any).config)
-
-  await sendTextMessage(
-    phoneNumber,
-    'Sorry, an error occurred. Please try again later.',
-  )
-}
-
-// API Routes
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json()
-
-    if (body?.object && body?.entry?.length > 0) {
-      const entry = body.entry[0]
-      if (entry?.changes?.length > 0) {
-        const change = entry.changes[0]
-        if (change?.value?.messages?.length > 0) {
-          const message = change.value.messages[0]
-          const from = extractLast10Digits(message.from)
-          await handleIncomingMessage(from, message)
-        }
-      }
-    }
-
-    return new Response('OK', { status: 200 })
-  } catch (error) {
-    console.error('Error processing webhook:', error)
-    return new Response('Server Error', { status: 500 })
-  }
-}
-
+// Webhook verification for WhatsApp
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams
   const mode = searchParams.get('hub.mode')
   const token = searchParams.get('hub.verify_token')
   const challenge = searchParams.get('hub.challenge')
 
+  // Check if token and mode exist in the query
   if (mode && token) {
+    // Check the mode and token sent are correct
     if (mode === 'subscribe' && token === process.env.VERIFY_TOKEN) {
+      // Respond with the challenge token from the request
       console.log('WEBHOOK_VERIFIED')
       return new Response(challenge, { status: 200 })
+    } else {
+      // Respond with '403 Forbidden' if verify tokens do not match
+      return new Response('Forbidden', { status: 403 })
     }
-    return new Response('Forbidden', { status: 403 })
   }
 
   return new Response('Bad Request', { status: 400 })
-}
-
-// Type conversion helper
-function convertToUser(userData: any): User {
-  return {
-    ...userData,
-    conversationState: userData.conversationState as
-      | ConversationState
-      | undefined,
-  }
-}
-
-// Update getUpcomingEventsByCategory function
-async function getUpcomingEventsByCategory(category: string): Promise<Event[]> {
-  const now = getTodayAtMidnight()
-  return prisma.event.findMany({
-    where: {
-      category,
-      eventDate: {
-        gte: now,
-      },
-      OR: [
-        { registrationDeadline: null },
-        { registrationDeadline: { gte: now } },
-      ],
-    },
-    orderBy: {
-      eventDate: 'asc',
-    },
-    take: 10,
-  })
-}
-
-// Add the missing sendEventsList function
-async function sendEventsList(
-  phoneNumber: string,
-  events: Event[],
-  categoryName: string,
-) {
-  try {
-    const categoryInfo = EVENT_CATEGORIES.find(
-      cat => cat.value === categoryName,
-    )
-    const categoryLabel = categoryInfo ? categoryInfo.label : categoryName
-
-    // Make sure we don't exceed the maximum number of events in a list
-    const limitedEvents = limitListRows(events)
-
-    const formattedEvents = limitedEvents.map(event => {
-      const eventDate = new Date(event.eventDate)
-      const formattedDate = eventDate.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-      })
-
-      // Create description text
-      const description = `happening on ${formattedDate} - ${event.eventTime}, Price: ₹${event.price}`
-
-      return {
-        id: event.id,
-        title: truncateListTitle(event.title),
-        description: truncateListDescription(description),
-      }
-    })
-
-    const listMessage = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: phoneNumber,
-      type: 'interactive',
-      interactive: {
-        type: 'list',
-        header: {
-          type: 'text',
-          text: truncateHeader(`${categoryLabel} Events`),
-        },
-        body: {
-          text: truncateBody(
-            `Kindly select the event you wish to participate in from the options provided.`,
-          ),
-        },
-        footer: {
-          text: truncateFooter('Select an event for more details'),
-        },
-        action: {
-          button: 'View Events',
-          sections: [
-            {
-              title: 'Upcoming Events',
-              rows: formattedEvents.map(event => ({
-                id: event.id,
-                title: event.title,
-                description: event.description,
-              })),
-            },
-          ],
-        },
-      },
-    }
-
-    await sendInteractiveMessage(phoneNumber, listMessage)
-  } catch (error) {
-    console.error('Error sending events list:', error)
-    throw error
-  }
-}
-
-// Update the handleCategorySelection function with proper type
-async function handleCategorySelection(user: User, message: WhatsAppMessage) {
-  try {
-    let selectedCategory = null
-
-    if (
-      message.type === 'interactive' &&
-      message.interactive?.type === 'list_reply'
-    ) {
-      selectedCategory = message.interactive.list_reply?.id
-    } else if (message.type === 'text' && message.text?.body) {
-      const text = message.text.body.toLowerCase()
-      const matchedCategory = EVENT_CATEGORIES.find(
-        cat =>
-          cat.value.toLowerCase() === text ||
-          cat.label.toLowerCase().includes(text),
-      )
-      if (matchedCategory) {
-        selectedCategory = matchedCategory.value
-      }
-    }
-
-    if (!selectedCategory) {
-      await sendTextMessage(
-        user.mobileNumber,
-        "Sorry, I couldn't understand your selection. Please choose from the list of categories.",
-      )
-      await sendCategoryList(user)
-      return
-    }
-
-    const categoryInfo = EVENT_CATEGORIES.find(
-      cat => cat.value === selectedCategory,
-    )
-    const categoryDescription = categoryInfo
-      ? categoryInfo.description
-      : 'Unknown category'
-
-    await sendTextMessage(
-      user.mobileNumber,
-      `Thanks for your selection!\n${categoryDescription}`,
-    )
-
-    const events = await getUpcomingEventsByCategory(selectedCategory)
-
-    if (events.length === 0) {
-      await sendTextMessage(
-        user.mobileNumber,
-        `Thanks for your interest! All seats are currently filled, and we couldn’t accommodate your booking this time. Stay tuned to @fiddle.fitness on Instagram for upcoming slots and updates!`,
-      )
-      await resetUserState(user)
-      await sendCategoryList(user)
-      return
-    }
-
-    await updateUserState(user, ConversationState.AWAITING_EVENT_SELECTION, {
-      selectedCategory,
-      eventIds: events.map((e: Event) => e.id),
-    })
-
-    await sendEventsList(user.mobileNumber, events, selectedCategory)
-  } catch (error) {
-    console.error('Error handling category selection:', error)
-    throw error
-  }
 }
