@@ -162,7 +162,8 @@ model PoolAttendee {
 // Payment model to track payment transactions
 model Payment {
   id            String  @id @default(cuid())
-  amount        Float
+  amount        Float // This will store the actual amount paid after discount
+  coinsUsed     Float?  @default(0) // Amount of Fiddle Coins used
   currency      String  @default("INR")
   paymentId     String? @unique // Razorpay payment ID
   orderId       String? // Razorpay order ID

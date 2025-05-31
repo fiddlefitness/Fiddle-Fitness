@@ -1,35 +1,34 @@
 // app/api/users/[id]/route.js
-import { NextResponse } from 'next/server';
-import {prisma} from '@/lib/prisma';
 import { extractLast10Digits } from '@/lib/formatMobileNumber';
+import { prisma } from '@/lib/prisma';
+import { NextResponse } from 'next/server';
 
 export async function GET(request, { params }) {
-  const { mobileNumber } = await params;
+  const { mobileNumber } = await params; // This should be the raw mobile number from URL
+  const formattedMobileNumber = extractLast10Digits(mobileNumber); // Format it for DB query
 
-  
-  
   try {
     const user = await prisma.user.findUnique({
-      where: { mobileNumber },
+      where: { mobileNumber: formattedMobileNumber }, // Use formatted number
       select: {
         id: true,
         name: true,
         email: true,
         city: true,
         gender: true,
-        mobileNumber: true,
+        mobileNumber: true, // This will be the formatted one from DB
         createdAt: true,
-        fiddleFitnessCoins: true,
+        fiddleFitnessCoins: true, // Ensure this is selected
       }
     });
-    
+
     if (!user) {
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
       );
     }
-    
+
     return NextResponse.json(user);
   } catch (error) {
     console.error('Error fetching user:', error);

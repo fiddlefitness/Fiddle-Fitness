@@ -1,9 +1,9 @@
 // app/api/users/register-event/route.js
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { extractLast10Digits } from '@/lib/formatMobileNumber';
+import { prisma } from '@/lib/prisma';
+import { NextRequest, NextResponse } from 'next/server';
 
-export async function POST(request) {
+export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
     
@@ -17,11 +17,16 @@ export async function POST(request) {
       );
     }
     
-    // Find user by mobile number
+    // Find user by mobile number and get count of their registrations
     const user = await prisma.user.findUnique({
       where: {
         mobileNumber: mobileNumber
-      }
+      },
+      include: {
+        _count: {
+          select: { registeredEvents: true },
+        },
+      },
     });
     
     if (!user) {
@@ -81,7 +86,7 @@ export async function POST(request) {
     }
     
     // Only allow direct registration for free events or with proper verification
-    if (event.price > 0 && !data.freeEvent) {
+    if (event.price && event.price > 0 && !data.freeEvent) {
       // For paid events, direct registration is not allowed without payment verification
       // This endpoint should only be used for free events or called from the payment verification API
       return NextResponse.json(
@@ -101,6 +106,21 @@ export async function POST(request) {
         user: true
       }
     });
+
+    // Check for referral bonus
+    const referralBonus = 50;
+    // user._count.registeredEvents will be 0 before this new registration is created
+    // so if it's 0 and user was referred, this is their first event.
+    if (user._count.registeredEvents === 0 && user.referredById) {
+      await prisma.user.update({
+        where: { id: user.referredById },
+        data: {
+          fiddleFitnessCoins: {
+            increment: referralBonus,
+          },
+        },
+      });
+    }
     
     // Return success response with registration details
     return NextResponse.json({
@@ -120,7 +140,7 @@ export async function POST(request) {
   } catch (error) {
     console.error('Error registering for event:', error);
     return NextResponse.json(
-      { error: 'Failed to register for event: ' + error.message },
+      { error: 'Failed to register for event: ' + (error as Error).message },
       { status: 500 }
     );
   }

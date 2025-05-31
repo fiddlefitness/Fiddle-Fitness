@@ -2,7 +2,7 @@
 
 import { format } from 'date-fns'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 interface PaymentFormProps {
   event: {
@@ -18,6 +18,7 @@ interface PaymentFormProps {
     mobileNumber: string
     email?: string
     city?: string
+    fiddleFitnessCoins?: number
   }
   eventId: string
   mobileNumber: string
@@ -34,6 +35,21 @@ export default function PaymentForm({
   const router = useRouter()
   const [paymentLoading, setPaymentLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [useCoins, setUseCoins] = useState(false)
+  const [coinsToApply, setCoinsToApply] = useState(0)
+  const [finalAmount, setFinalAmount] = useState(event.price || 0)
+
+  const availableCoins = user.fiddleFitnessCoins || 0
+  const eventPrice = event.price || 0
+
+  useEffect(() => {
+    let applicableCoins = 0
+    if (useCoins && availableCoins > 0 && eventPrice > 0) {
+      applicableCoins = Math.min(availableCoins, eventPrice)
+    }
+    setCoinsToApply(applicableCoins)
+    setFinalAmount(Math.max(0, eventPrice - applicableCoins))
+  }, [useCoins, availableCoins, eventPrice])
 
   const createOrderId = async () => {
     try {
@@ -44,21 +60,24 @@ export default function PaymentForm({
           'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',
         },
         body: JSON.stringify({
-          amount: parseFloat(event.price) * 100,
+          originalAmount: eventPrice * 100,
+          finalAmount: finalAmount * 100,
+          coinsUsed: coinsToApply,
           eventId: eventId,
           mobileNumber: mobileNumber,
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Network response was not ok')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Network response was not ok')
       }
 
       const data = await response.json()
       return data.orderId
     } catch (error) {
       console.error('There was a problem with your fetch operation:', error)
-      setError('Failed to create payment order. Please try again.')
+      setError(`Failed to create payment order: ${error.message}. Please try again.`)
       return null
     }
   }
@@ -68,18 +87,18 @@ export default function PaymentForm({
     setError(null)
 
     try {
-      // If the event is free, register directly without payment
-      if (event.price === 0 || event.price === null) {
+      if (finalAmount === 0) {
         const registrationRes = await fetch('/api/users/register-event', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',
           },
           body: JSON.stringify({
             eventId: eventId,
             mobileNumber: mobileNumber,
-            // No payment verification needed for free events
             freeEvent: true,
+            coinsUsed: coinsToApply,
           }),
         })
 
@@ -90,12 +109,11 @@ export default function PaymentForm({
 
         const registrationData = await registrationRes.json()
         router.push(
-          `/registration-success?eventId=${eventId}&regId=${registrationData.registration.id}`,
+          `/registration-success?eventId=${eventId}&regId=${registrationData.registration.id}&coinsUsed=${coinsToApply}`,
         )
         return
       }
 
-      // For paid events, create order and process payment
       const orderId = await createOrderId()
       if (!orderId) {
         setPaymentLoading(false)
@@ -104,7 +122,7 @@ export default function PaymentForm({
 
       const options = {
         key: process.env.RAZORPAY_KEY_ID,
-        amount: parseFloat(event.price) * 100,
+        amount: finalAmount * 100,
         currency: 'INR',
         name: event.title,
         description: `Registration for ${event.title}`,
@@ -118,7 +136,8 @@ export default function PaymentForm({
               razorpaySignature: response.razorpay_signature,
               eventId: eventId,
               mobileNumber: mobileNumber,
-              amount: parseFloat(event.price) * 100,
+              amountPaid: finalAmount * 100,
+              coinsUsed: coinsToApply,
             }
 
             const result = await fetch('/api/verify', {
@@ -130,9 +149,8 @@ export default function PaymentForm({
             const res = await result.json()
 
             if (res.isOk) {
-              // Payment verified successfully, redirect to success page
               router.push(
-                `/registration-success?eventId=${eventId}&paymentId=${response.razorpay_payment_id}`,
+                `/registration-success?eventId=${eventId}&paymentId=${response.razorpay_payment_id}&coinsUsed=${coinsToApply}`,
               )
             } else {
               setError(res.message || 'Payment verification failed')
@@ -163,14 +181,16 @@ export default function PaymentForm({
 
       const paymentObject = new (window as any).Razorpay(options)
       paymentObject.on('payment.failed', function (response: any) {
-        setError(response.error.description || 'Payment failed')
+        setError(
+          `${response.error.description || 'Payment failed'}${response.error.reason ? ` (Reason: ${response.error.reason})` : ''}`
+        )
         setPaymentLoading(false)
       })
 
       paymentObject.open()
     } catch (error) {
       console.error('Payment initiation error:', error)
-      setError('Failed to initiate payment. Please try again.')
+      setError(`Failed to initiate payment: ${error.message}. Please try again.`)
       setPaymentLoading(false)
     }
   }
@@ -244,8 +264,32 @@ export default function PaymentForm({
                   <p className='text-gray-900 truncate'>{user.city}</p>
                 </div>
               )}
+              <div>
+                <p className='text-sm text-gray-500'>Fiddle Coins</p>
+                <p className='text-gray-900'>{availableCoins}</p>
+              </div>
             </div>
           </div>
+
+          {eventPrice > 0 && (
+            <div className='mb-6'>
+              <label htmlFor='useCoinsCheckbox' className='flex items-center'>
+                <input
+                  id='useCoinsCheckbox'
+                  type='checkbox'
+                  className='h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500'
+                  checked={useCoins}
+                  onChange={(e) => setUseCoins(e.target.checked)}
+                  disabled={availableCoins === 0}
+                />
+                <span className={`ml-2 text-sm ${availableCoins === 0 ? 'text-gray-400' : 'text-gray-700'}`}>
+                  Use your {availableCoins} Fiddle Coins
+                  {useCoins && coinsToApply > 0 && ` (Save ₹${coinsToApply.toFixed(2)})`}
+                </span>
+              </label>
+              {availableCoins === 0 && <p className="text-xs text-gray-500 ml-6">You have no Fiddle Coins available.</p>}
+            </div>
+          )}
 
           <div className='mb-6'>
             <h2 className='text-lg font-semibold text-gray-900 mb-3'>
@@ -253,17 +297,21 @@ export default function PaymentForm({
             </h2>
             <div className='flex justify-between items-center'>
               <span className='text-gray-600'>Event Fee</span>
-              <span className='text-gray-900'>₹{event.price || 0}</span>
+              <span className='text-gray-900'>₹{eventPrice.toFixed(2)}</span>
             </div>
-            {/* Add any additional fees or taxes here if needed */}
+            {useCoins && coinsToApply > 0 && (
+              <div className='flex justify-between items-center text-green-600'>
+                <span className='text-sm'>Fiddle Coins Discount</span>
+                <span className='text-sm'>- ₹{coinsToApply.toFixed(2)}</span>
+              </div>
+            )}
             <div className='flex justify-between items-center font-medium mt-3 pt-3 border-t border-gray-200'>
-              <span className='text-gray-900'>Total</span>
-              <span className='text-gray-900'>₹{event.price || 0}</span>
+              <span className='text-gray-900'>Total Payable</span>
+              <span className='text-gray-900'>₹{finalAmount.toFixed(2)}</span>
             </div>
           </div>
 
-          {/* If price is 0, show "Complete Registration" instead of payment button */}
-          {event.price === 0 || event.price === null ? (
+          {finalAmount === 0 ? (
             <div>
               <button
                 onClick={handlePayment}
@@ -286,7 +334,7 @@ export default function PaymentForm({
               >
                 {paymentLoading
                   ? 'Processing Payment...'
-                  : `Pay ₹${event.price}`}
+                  : `Pay ₹${finalAmount.toFixed(2)}`}
               </button>
               <p className='text-xs text-gray-500 mt-2 text-center'>
                 By clicking this button, you agree to our Terms of Service and
@@ -304,4 +352,4 @@ export default function PaymentForm({
       </div>
     </div>
   )
-} 
+}

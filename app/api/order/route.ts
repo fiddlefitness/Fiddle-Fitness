@@ -10,12 +10,12 @@ async function postOrder(request) {
     // Add debugging to check available prisma models
     console.log('Available Prisma models:', Object.keys(prisma));
     
-    const { amount, eventId, mobileNumber } = await request.json();
+    const { originalAmount, finalAmount, coinsUsed, eventId, mobileNumber } = await request.json();
     
     // Validate required fields
-    if (!amount || !eventId || !mobileNumber) {
+    if (typeof originalAmount !== 'number' || typeof finalAmount !== 'number' || typeof coinsUsed !== 'number' || !eventId || !mobileNumber) {
       return NextResponse.json(
-        { error: 'Amount, eventId, and mobileNumber are required' },
+        { error: 'originalAmount, finalAmount, coinsUsed, eventId, and mobileNumber are required and must be numbers where applicable.' },
         { status: 400 }
       );
     }
@@ -46,13 +46,31 @@ async function postOrder(request) {
       );
     }
     
-    // Verify the amount matches the event price (converted to paise)
-    const expectedAmount = parseFloat(event.price) * 100;
-    if (amount !== expectedAmount) {
+    // Verify the originalAmount matches the event price (converted to paise)
+    const expectedOriginalAmount = parseFloat(event.price) * 100;
+    if (originalAmount !== expectedOriginalAmount) {
       return NextResponse.json(
-        { error: 'Payment amount does not match event price' },
+        { error: 'Original amount does not match event price' },
         { status: 400 }
       );
+    }
+
+    // Verify coinsUsed is not more than available or event price
+    const actualCoinsUsed = Math.min(coinsUsed, user.fiddleFitnessCoins, parseFloat(event.price));
+    const calculatedFinalAmount = expectedOriginalAmount - (actualCoinsUsed * 100);
+
+    if (finalAmount !== Math.max(0, calculatedFinalAmount)) {
+        return NextResponse.json(
+            { error: 'Final amount calculation mismatch or invalid coins usage.' },
+            { status: 400 }
+        );
+    }
+    
+    if (user.fiddleFitnessCoins < actualCoinsUsed && actualCoinsUsed > 0) {
+        return NextResponse.json(
+            { error: 'Insufficient Fiddle Fitness Coins.' },
+            { status: 400 }
+        );
     }
     
     // Check if user is already registered
@@ -78,17 +96,19 @@ async function postOrder(request) {
 
     // Create an order
     const order = await razorpay.orders.create({
-      amount: amount,
+      amount: finalAmount, // Use finalAmount (in paise) for Razorpay
       currency: 'INR',
       receipt: `rcpt_${user.mobileNumber}_${Date.now()}`,
 
       notes: {
         eventId: eventId,
-        userId: user.id
+        userId: user.id,
+        coinsUsed: actualCoinsUsed.toString(), // Store coins used as string note
+        originalAmount: (originalAmount / 100).toString()
       }
     });
 
-    console.log('Razorpay order created:', order.id);
+    console.log('Razorpay order created:', order.id, 'for amount:', finalAmount);
     
     // Try-catch block specifically for the PaymentOrder creation
     try {
@@ -104,7 +124,7 @@ async function postOrder(request) {
       const savedOrder = await prisma.paymentOrder.create({
         data: {
           orderId: order.id,
-          amount: amount / 100, // Store in rupees, not paise
+          amount: finalAmount / 100, // Store final amount in rupees
           currency: 'INR',
           status: 'created',
           userId: user.id,
@@ -123,7 +143,7 @@ async function postOrder(request) {
     return NextResponse.json({
       orderId: order.id,
       currency: order.currency,
-      amount: order.amount,
+      amount: order.amount, // This is finalAmount
     });
     
   } catch (error) {

@@ -171,7 +171,8 @@ export async function POST(request: NextRequest) {
       razorpaySignature,
       eventId,
       mobileNumber,
-      amount,
+      amountPaid, // This is the final amount paid via Razorpay (in paise)
+      coinsUsed,  // This is the value of coins used (e.g., 10 for ₹10)
     } = await request.json()
 
     // Validate required fields and types
@@ -181,7 +182,9 @@ export async function POST(request: NextRequest) {
       !razorpaySignature ||
       !eventId ||
       !mobileNumber ||
-      (typeof mobileNumber !== 'string' && typeof mobileNumber !== 'number')
+      (typeof mobileNumber !== 'string' && typeof mobileNumber !== 'number') ||
+      typeof amountPaid !== 'number' || // amountPaid is in paise
+      typeof coinsUsed !== 'number'   // coinsUsed is in currency value (e.g., 10 for ₹10)
     ) {
       return NextResponse.json(
         { message: 'Missing or invalid required parameters', isOk: false },
@@ -255,12 +258,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify payment amount matches event price
-    if (amount !== parseFloat(event.price) * 100) {
+    // Verify payment amount
+    // The amountPaid (from Razorpay) should be event.price - coinsUsed
+    const eventPriceInPaise = parseFloat(event.price) * 100;
+    const coinsUsedInPaise = coinsUsed * 100;
+    
+    // Recalculate expected final amount based on event price and coins used from request
+    // Ensure coinsUsed does not exceed event price or user's balance (primary check on frontend and order API, re-verify here)
+    const actualCoinsToDeduct = Math.min(coinsUsed, user.fiddleFitnessCoins, parseFloat(event.price));
+    const expectedFinalAmountInPaise = eventPriceInPaise - (actualCoinsToDeduct * 100);
+
+    if (amountPaid !== Math.max(0, expectedFinalAmountInPaise)) {
+       console.error(`Amount mismatch: amountPaid from request ${amountPaid}, expectedFinalAmountInPaise ${expectedFinalAmountInPaise}, eventPriceInPaise ${eventPriceInPaise}, coinsUsed from request ${coinsUsed}, actualCoinsToDeduct ${actualCoinsToDeduct}`);
       return NextResponse.json(
-        { message: 'Payment amount does not match event price', isOk: false },
+        { message: 'Payment amount verification failed. Discrepancy in final amount.', isOk: false },
         { status: 400 },
       )
+    }
+    
+    // Also verify against Razorpay's reported amount
+    if (paymentDetails.amount !== amountPaid) {
+        console.error(`Razorpay amount mismatch: paymentDetails.amount ${paymentDetails.amount}, amountPaid from request ${amountPaid}`);
+        return NextResponse.json(
+            { message: 'Payment amount does not match Razorpay record.', isOk: false },
+            { status: 400 }
+        );
     }
 
     // Check if event is already at capacity
@@ -306,7 +328,8 @@ export async function POST(request: NextRequest) {
     // Store payment information
     const payment = await prisma.payment.create({
       data: {
-        amount: amount / 100, // Store in rupees, not paise
+        amount: amountPaid / 100, // Store actual paid amount in rupees
+        coinsUsed: actualCoinsToDeduct, // Store coins used (currency value)
         paymentId: razorpayPaymentId,
         orderId: orderCreationId,
         status: 'completed',
@@ -329,6 +352,19 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Deduct Fiddle Fitness Coins if used
+    if (actualCoinsToDeduct > 0) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          fiddleFitnessCoins: {
+            decrement: actualCoinsToDeduct,
+          },
+        },
+      });
+      console.log(`Deducted ${actualCoinsToDeduct} coins from user ${user.id}. New balance: ${user.fiddleFitnessCoins - actualCoinsToDeduct}`);
+    }
+
     // Format event date for message
     const eventDate = event.eventDate
       ? new Date(event.eventDate).toLocaleDateString('en-US', {
@@ -343,15 +379,19 @@ export async function POST(request: NextRequest) {
     const formattedAmount = new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR'
-    }).format(amount / 100)
+    }).format(amountPaid / 100)
 
     // Send confirmation message via WhatsApp
+    let confirmationMessage = `Here's confirming the receipt of your payment for *${event.title}*.`;
+    if (actualCoinsToDeduct > 0) {
+        confirmationMessage += ` You used ${actualCoinsToDeduct} Fiddle Fitness Coins for a discount of ₹${actualCoinsToDeduct.toFixed(2)}.`;
+    }
+    confirmationMessage += ` Your official payment receipt will be sent to your email address.`;
+    
     await sendTextMessage(
       user.mobileNumber,
-      `Here's confirming the receipt of your payment for *${event.title}*. Your official payment receipt will be sent to your email address.`
+      confirmationMessage
     )
-
-
 
     // After successful payment verification and before sending WhatsApp messages
     if (user.email) {
