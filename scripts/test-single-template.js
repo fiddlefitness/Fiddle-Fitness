@@ -2,7 +2,7 @@
 import dotenv from 'dotenv';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { sendTextMessage } from '../lib/whatsapp.ts';
+import { sendTextMessage, sendWelcomeAboardTemplate } from '../lib/whatsapp.ts';
 
 // Initialize dotenv (with debugging)
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -25,10 +25,7 @@ async function main() {
     console.log('='.repeat(50));
     
     // Send template message
-    const response = await sendTextMessage(
-      RECIPIENT_PHONE,
-      "Hello! This is a test message from the updated WhatsApp.ts library."
-    );
+    const response = await sendWelcomeAboardTemplate(8305387399, 50, fdgrg)
     
     console.log('SUCCESS!');
     console.log('Response Data:', JSON.stringify(response, null, 2));

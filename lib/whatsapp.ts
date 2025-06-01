@@ -740,8 +740,6 @@ export async function sendUserHelpMessageToAdmin(
   }
 }
 
-
-
 /**
  * Send a payment link template to a user
  * 
@@ -807,6 +805,69 @@ export async function sendPaymentLinkTemplate(
     return response.data;
   } catch (error) {
     console.error('Error sending payment link template:', error);
+    throw error;
+  }
+}
+
+/**
+ * Send a "welcome_aboard" template message with fiddle coins and a referral code CTA.
+ * 
+ * @param recipient - Recipient's phone number
+ * @param fiddle_coins - Number of Fiddle Coins awarded
+ * @param referral_code - Referral code to be copied
+ * @param languageCode - Language code (default: 'en')
+ * @returns API response data
+ */
+export async function sendWelcomeAboardTemplate(
+  recipient: string,
+  fiddle_coins: string, // Assuming fiddle_coins is passed as a string
+  referral_code: string,
+  languageCode: string = 'en'
+) {
+  const data = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: recipient,
+    type: 'template',
+    template: {
+      name: 'welcome_aboard',
+      language: { code: languageCode },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: truncateTemplateParam(fiddle_coins) }
+          ]
+        },
+        {
+          type: 'button',
+          sub_type: 'COPY_CODE',
+          index: '0', // Assuming this is the first (or only) button of this type
+          parameters: [
+            {
+              type: 'coupon_code',
+              coupon_code: referral_code 
+            }
+          ]
+        }
+      ]
+    }
+  };
+
+  try {
+    const response = await axios({
+      method: 'POST',
+      url: `${getBaseUrl()}/messages`,
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+        'Content-Type': 'application/json',
+      },
+      data
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error sending welcome_aboard template:', error);
     throw error;
   }
 }

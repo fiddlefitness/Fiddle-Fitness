@@ -1,5 +1,6 @@
 import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
 import { extractLast10Digits } from '@/lib/formatMobileNumber'
+import { sendWelcomeAboardTemplate } from '@/lib/whatsapp'
 import { PrismaClient } from '@prisma/client'
 import axios from 'axios'
 import { NextRequest } from 'next/server'
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
 
     // Check if this is a WhatsApp message
+
     if (body?.object && body?.entry?.length > 0) {
       const entry = body.entry[0]
 
@@ -95,14 +97,14 @@ export async function POST(req: NextRequest) {
 
           console.log(`Received message from ${from}:`, JSON.stringify(message))
 
-          // before actually checing the message, check if the body of the message is Hello
-          if (message.text.body.toLowerCase().includes('hello')) {
-            await sendTextMessage(from, '👋 Hello! How can I help you today?')
-            return
-          }
+          // // before actually checing the message, check if the body of the message is Hello
+          // if (message.text.body.toLowerCase().includes('hello')) {
+          //   await sendTextMessage(from, '👋 Hello! How can I help you today?')
+          //   return
+          // }
 
           // Process the message based on type and user state
-          await handleIncomingMessage(from, message)
+          handleIncomingMessage(from, message)
         }
       }
     }
@@ -117,7 +119,10 @@ export async function POST(req: NextRequest) {
 /**
  * Main handler for incoming messages
  */
-async function handleIncomingMessage(phoneNumber: string, message: WhatsAppMessage) {
+async function handleIncomingMessage(
+  phoneNumber: string,
+  message: WhatsAppMessage,
+) {
   try {
     // Check if user exists, create if not
     console.log('Checking user:', phoneNumber)
@@ -180,7 +185,7 @@ async function handleIncomingMessage(phoneNumber: string, message: WhatsAppMessa
         console.error('Invalid flow response structure')
         return
       }
-      
+
       const flowToken = flowResponse.response_json.flow_token
       const body = flowResponse.body
       const name = flowResponse.name
@@ -188,10 +193,14 @@ async function handleIncomingMessage(phoneNumber: string, message: WhatsAppMessa
       if (body === 'Sent' && name === 'flow') {
         console.log('Flow response received with token:', flowToken)
 
-        await sendTextMessage(
-          phoneNumber,
-          'Welcome aboard, we are glad to have you here!',
-        )
+        // await sendTextMessage(
+        //   phoneNumber,
+        //   `Welcome aboard! We're  glad to have you here! 🎉\n\nDid you know? You can earn 50 Fiddle Coins for each friend who successfully registers using your referral code \n ${user.referralCode} \n Share the love and watch your coins grow! 💫`,
+        // )
+
+        // await sendReferralCodeCtaMessage(phoneNumber, '50', user.referralCode)
+        await sendWelcomeAboardTemplate(phoneNumber, '50', user.referralCode)
+
         await sendCategoryList(user)
         return // Exit early as flow responses don't need further processing
       }
@@ -520,8 +529,8 @@ async function handleRegisteredEventSelection(user: any, message: any) {
 
     if (poolsAssigned && userPool) {
       // Pool is created and user is assigned
-      let meetLinkText = userPool.meetLink || 'Link will be shared soon';
-      
+      let meetLinkText = userPool.meetLink || 'Link will be shared soon'
+
       // Add instructions for Google Meet links
       if (meetLinkText.includes('meet.google.com')) {
         messageBody +=
@@ -601,6 +610,14 @@ async function sendCategoryList(user: any) {
         user.mobileNumber,
         'Sorry, there are no upcoming events available at the moment. Please check back later!',
       )
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          conversationState: ConversationState.IDLE,
+          // Optionally, clear context data if it's no longer relevant
+          // contextData: {},
+        },
+      })
       return
     }
 
@@ -1026,7 +1043,9 @@ async function handleEventSelection(user: any, message: any) {
       `*Spots Remaining:* ${spotsRemaining} out of ${event.maxCapacity}`
 
     // Build registration URL with proper encoding
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://fiddle-fitness-fiddle-fitness-projects.vercel.app/'
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      'https://fiddle-fitness-fiddle-fitness-projects.vercel.app/'
     const registrationUrl = new URL(
       `/payment/${event.id}/${user.mobileNumber}`,
       baseUrl,
@@ -1135,7 +1154,96 @@ export async function sendTextMessage(phoneNumber: string, message: string) {
   }
 }
 
-async function sendFlowTemplate(recipient: string, templateName: string, languageCode: string = 'en') {
+export async function sendReferralCodeCtaMessage(
+  phoneNumber: string,
+  referralCode: string,
+  messagePrefix?: string,
+) {
+  // Default message prefix if not provided
+  const prefix = messagePrefix || "Here's your referral code:"
+
+  // Message body clearly showing the referral code.
+  // Added a hint for users to tap/hold the code in the message body to copy,
+  // as button actions for direct copy-to-clipboard are limited in non-template messages.
+  const messageBodyText = `${prefix} ${referralCode}\n\n(You can usually tap and hold the code above to copy it.)`
+
+  // Determine button title based on referral code length.
+  // WhatsApp button titles have a maximum length (typically 20 characters).
+  let buttonTitle = referralCode
+  if (referralCode.length > 20) {
+    buttonTitle = 'Copy Code' // Generic title if code is too long for the button
+  }
+
+  // Construct the payload for the interactive message
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: phoneNumber,
+    type: 'interactive',
+    interactive: {
+      type: 'button', // Type of interactive message
+      body: {
+        text: messageBodyText, // Main text of the message
+      },
+      action: {
+        buttons: [
+          {
+            type: 'reply', // This type of button sends a reply message back to your webhook when tapped
+            reply: {
+              // The title is what the user sees on the button (max 20 chars)
+              title: buttonTitle,
+              // The ID is sent back to your webhook when the button is tapped.
+              // Make this ID unique and descriptive for your backend logic (max 256 chars).
+              // Using a combination of a prefix, part of the code, and a timestamp for uniqueness.
+              id: `referral_cta_${referralCode
+                .substring(0, 10)
+                .replace(/\s/g, '_')}_${Date.now()}`,
+            },
+          },
+        ],
+      },
+    },
+  }
+
+  try {
+    // Make the POST request to the WhatsApp API
+    const response = await axios({
+      method: 'POST',
+      url: WHATSAPP_API_URL,
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      data: payload,
+    })
+
+    console.log('Referral code CTA message sent successfully:', response.data)
+    return response.data // Return the response for further handling if needed
+  } catch (error) {
+    // Log detailed error information if available
+    if (axios.isAxiosError(error) && error.response) {
+      console.error(
+        'Error sending referral code CTA message. Status:',
+        error.response.status,
+        'Data:',
+        error.response.data,
+      )
+    } else if (error instanceof Error) {
+      console.error('Error sending referral code CTA message:', error.message)
+    } else {
+      console.error(
+        'An unknown error occurred while sending referral code CTA message:',
+        error,
+      )
+    }
+    throw error // Re-throw the error for the caller to handle
+  }
+}
+
+async function sendFlowTemplate(
+  recipient: string,
+  templateName: string,
+  languageCode: string = 'en',
+) {
   try {
     console.log(`Sending flow template "${templateName}" to ${recipient}...`)
 
