@@ -1,6 +1,7 @@
 // app/api/users/register-event/route.js
 import { extractLast10Digits } from '@/lib/formatMobileNumber';
 import { prisma } from '@/lib/prisma';
+import { sendReferralSuccessMessageTemplate } from '@/lib/whatsapp';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -112,14 +113,31 @@ export async function POST(request: NextRequest) {
     // user._count.registeredEvents will be 0 before this new registration is created
     // so if it's 0 and user was referred, this is their first event.
     if (user._count.registeredEvents === 0 && user.referredById) {
-      await prisma.user.update({
+      const updatedReferrer = await prisma.user.update({
         where: { id: user.referredById },
         data: {
           fiddleFitnessCoins: {
             increment: referralBonus,
           },
         },
+        select: { id: true, mobileNumber: true } // Select required fields from the updated record
       });
+
+      // Notify the referrer using the data from updatedReferrer
+      // No need for an additional findUnique call here
+      if (updatedReferrer) { // Check if update was successful and returned a record
+        try {
+          if (updatedReferrer.mobileNumber) {
+            await sendReferralSuccessMessageTemplate(updatedReferrer.mobileNumber);
+            console.log(`Referral success message sent to ${updatedReferrer.mobileNumber}`);
+          } else {
+            console.warn(`Referrer (ID: ${updatedReferrer.id}) was updated but has no mobile number, cannot send WhatsApp notification.`);
+          }
+        } catch (whatsappError) {
+          console.error('Failed to send referral success WhatsApp message:', whatsappError);
+          // Do not block the registration process if WhatsApp message fails
+        }
+      }
     }
     
     // Return success response with registration details

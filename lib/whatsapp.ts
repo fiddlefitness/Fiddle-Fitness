@@ -871,3 +871,45 @@ export async function sendWelcomeAboardTemplate(
     throw error;
   }
 }
+
+/**
+ * Send a "referral_success_message" template message.
+ * This is a static template and does not require any dynamic parameters.
+ * 
+ * @param recipient - Recipient's phone number
+ * @param languageCode - Language code (default: 'en')
+ * @returns API response data
+ */
+export async function sendReferralSuccessMessageTemplate(
+  recipient: string,
+  languageCode: string = 'en'
+) {
+  const data = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: recipient,
+    type: 'template',
+    template: {
+      name: 'referral_success_message',
+      language: { code: languageCode }
+      // No components needed for a static template without variables or buttons
+    }
+  };
+
+  try {
+    const response = await axios({
+      method: 'POST',
+      url: `${getBaseUrl()}/messages`,
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+        'Content-Type': 'application/json',
+      },
+      data
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error sending referral_success_message template:', error);
+    throw error;
+  }
+}
