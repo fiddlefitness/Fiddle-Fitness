@@ -234,7 +234,7 @@ async function handleIncomingMessage(
         break
     }
   } catch (error) {
-    console.error('Error handling message:')
+    console.error('Error handling message:', error)
     if (axios.isAxiosError(error)) {
       // The request was made and server responded with non-2xx status
       console.error('Error data:', error.response?.data)
