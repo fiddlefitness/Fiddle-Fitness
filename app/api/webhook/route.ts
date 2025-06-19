@@ -1,11 +1,12 @@
 import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
 import { extractLast10Digits } from '@/lib/formatMobileNumber'
 import { sendWelcomeAboardTemplate } from '@/lib/whatsapp'
-import { PrismaClient } from '@prisma/client'
+// import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma';
 import axios from 'axios'
 import { NextRequest } from 'next/server'
 
-const prisma = new PrismaClient()
+
 
 // Types
 interface WhatsAppMessage {
@@ -124,12 +125,6 @@ async function handleIncomingMessage(
   message: WhatsAppMessage,
 ) {
   try {
-    // Bug Fix check for DB connection
-    let getSampleUser = await prisma.user.findUnique({
-      where: { mobileNumber: '9748859592' },
-    })
-    //
-    
     // Check if user exists, create if not
     console.log('Checking user by phone:', phoneNumber)
     let user = await prisma.user.findUnique({
