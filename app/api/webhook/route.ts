@@ -124,6 +124,12 @@ async function handleIncomingMessage(
   message: WhatsAppMessage,
 ) {
   try {
+    // Bug Fix check for DB connection
+    let getSampleUser = await prisma.user.findUnique({
+      where: { mobileNumber: '9748859592' },
+    })
+    //
+    
     // Check if user exists, create if not
     console.log('Checking user by phone:', phoneNumber)
     let user = await prisma.user.findUnique({
