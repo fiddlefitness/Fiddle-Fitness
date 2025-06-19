@@ -126,7 +126,7 @@ async function handleIncomingMessage(
   try {
     // Check if user exists, create if not
     console.log('Checking user:', phoneNumber)
-    let user = await prisma.user.findUnique({
+    let user = prisma.user.findUnique({
       where: { mobileNumber: phoneNumber },
     })
     console.log('User:', user)
