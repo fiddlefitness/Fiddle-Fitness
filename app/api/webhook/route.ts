@@ -124,9 +124,15 @@ async function handleIncomingMessage(
   message: WhatsAppMessage,
 ) {
   try {
-    console.log("check DB ...");
-   await prisma.$connect();
-    console.log('✅ Database connected successfully');
+
+   try {
+     console.log("om here chk db ....")
+  const user = await prisma.user.findFirst(); // or some tiny query
+  console.log("✅ Connected to DB, found user:", user);
+} catch (err) {
+  console.error("❌ DB Error:", err.message);
+}
+
 
     // Check if user exists, create if not
     console.log('Checking user by phone:', phoneNumber)
