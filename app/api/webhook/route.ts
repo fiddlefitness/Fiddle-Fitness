@@ -1132,6 +1132,7 @@ async function handleRegistrationConfirmation(user: any, message: any) {
  */
 export async function sendTextMessage(phoneNumber: string, message: string) {
   try {
+    console.log("Check Token" + WHATSAPP_TOKEN);
     const response = await axios({
       method: 'POST',
       url: WHATSAPP_API_URL,
