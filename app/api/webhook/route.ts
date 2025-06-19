@@ -5,7 +5,11 @@ import { PrismaClient } from '@prisma/client'
 import axios from 'axios'
 import { NextRequest } from 'next/server'
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient({
+  datasources: {
+    url : process.env.DATABASE_URL!,
+  },
+})
 
 // Types
 interface WhatsAppMessage {
