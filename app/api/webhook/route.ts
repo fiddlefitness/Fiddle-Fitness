@@ -5,10 +5,7 @@ import { PrismaClient } from '@prisma/client'
 import axios from 'axios'
 import { NextRequest } from 'next/server'
 
-//const prisma = new PrismaClient()
-const globalForPrisma = globalThis;
-const prisma =
-  globalForPrisma.prisma || new PrismaClient();
+const prisma = new PrismaClient()
 
 // Types
 interface WhatsAppMessage {
@@ -127,9 +124,13 @@ async function handleIncomingMessage(
   message: WhatsAppMessage,
 ) {
   try {
+    console.log("check DB ...");
+   await prisma.$connect();
+    console.log('✅ Database connected successfully');
+
     // Check if user exists, create if not
     console.log('Checking user by phone:', phoneNumber)
-    let user = await prisma.user.findFirst({
+    let user = await prisma.user.findUnique({
       where: { mobileNumber: phoneNumber },
     })
     console.log('User:', user)
