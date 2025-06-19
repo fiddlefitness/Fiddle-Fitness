@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client'
 import axios from 'axios'
 import { NextRequest } from 'next/server'
 
-const prisma = new PrismaClient({log:['query', 'error', 'info', 'warn']})
+const prisma = new PrismaClient()
 
 // Types
 interface WhatsAppMessage {
