@@ -5,6 +5,7 @@ import { sendWelcomeAboardTemplate } from '@/lib/whatsapp'
 import { prisma } from '@/lib/prisma';
 import axios from 'axios'
 import { NextRequest } from 'next/server'
+import pool from "@/lib/db"; // added for PG
 
 
 
@@ -126,14 +127,33 @@ async function handleIncomingMessage(
 ) {
   try {
     // Check if user exists, create if not
-    console.log('Checking user by phone:', phoneNumber)
-    let user = await prisma.user.findUnique({
-      where: { mobileNumber: phoneNumber },
-      select: {
-        id: true,
-      }
-    })
-    console.log('User:', user)
+    // console.log('Checking user by phone:', phoneNumber)
+    // let user = await prisma.user.findUnique({
+    //   where: { mobileNumber: phoneNumber },
+    //   select: {
+    //     id: true,
+    //   }
+    // })
+    // console.log('User:', user)
+
+
+    //setup for pg query
+    try {
+      const client = await pool.connect();
+      await client.query("SELECT NOW()"); // simple lightweight query
+      client.release();
+      console.log("✅ PostgreSQL is connected!");
+      } catch (error: any) {
+      console.error("❌ PostgreSQL connection error:", error.message);
+    }
+
+    const result = await pool.query(
+    'SELECT * FROM "User" WHERE "mobileNumber" = $1 LIMIT 1',
+    [phoneNumber]
+    );
+    const user = result.rows[0];
+    console.log("✅ Found User:", user);
+    
 
     if (!user) {
       // Create a new user with minimal info
