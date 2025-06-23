@@ -138,14 +138,14 @@ async function handleIncomingMessage(
 
 
     //setup for pg query
-    try {
-      const client = await pool.connect();
-      await client.query("SELECT NOW()"); // simple lightweight query
-      client.release();
-      console.log("✅ PostgreSQL is connected!");
-      } catch (error: any) {
-      console.error("❌ PostgreSQL connection error:", error.message);
-    }
+    // try {
+    //   const client = await pool.connect();
+    //   await client.query("SELECT NOW()"); // simple lightweight query
+    //   client.release();
+    //   console.log("✅ PostgreSQL is connected!");
+    //   } catch (error: any) {
+    //   console.error("❌ PostgreSQL connection error:", error.message);
+    // }
 
     const result = await pool.query(
     'SELECT * FROM "User" WHERE "mobileNumber" = $1 LIMIT 1',
