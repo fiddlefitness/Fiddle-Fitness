@@ -1,6 +1,6 @@
 import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
 import { extractLast10Digits } from '@/lib/formatMobileNumber'
-import { sendWelcomeAboardTemplate } from '@/lib/whatsapp'
+import { sendWelcomeAboardTemplate, sendWelcomeMessageTemplate } from '@/lib/whatsapp'
 // import { PrismaClient } from '@prisma/client'
 import { prisma } from '@/lib/prisma';
 import axios from 'axios'
@@ -159,7 +159,9 @@ async function handleIncomingMessage(
       // Create a new user with minimal info
       console.log('Creating new user:', phoneNumber)
       // the new user form will be added here right now we are only figuring out the flow for the existing user
-      sendFlowTemplate(phoneNumber, 'enter_your_details')
+      
+      sendFlowTemplate(phoneNumber, 'enter_your_details');
+      sendWelcomeMessageTemplate(phoneNumber, 'https://traderscontent.livetraders.com/galary/875199.jpeg')
       return
     }
 
