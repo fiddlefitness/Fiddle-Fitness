@@ -1,6 +1,6 @@
 import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
 import { extractLast10Digits } from '@/lib/formatMobileNumber'
-import { sendWelcomeAboardTemplate } from '@/lib/whatsapp'
+import { sendWelcomeAboardTemplate, sendWelcomeMessageTemplate } from '@/lib/whatsapp'
 // import { PrismaClient } from '@prisma/client'
 import { prisma } from '@/lib/prisma';
 import axios from 'axios'
@@ -157,10 +157,12 @@ async function handleIncomingMessage(
 
     if (!user) {
       // Create a new user with minimal info
-      console.log('Creating new user:', phoneNumber)
+      console.log('Creating new user:', phoneNumber);
       // the new user form will be added here right now we are only figuring out the flow for the existing user
-      sendWelcomeMessageTemplate(phoneNumber, 'https://traderscontent.livetraders.com/galary/875199.jpeg')
-      sendFlowTemplate(phoneNumber, 'enter_your_details');
+      let res1 = await sendWelcomeMessageTemplate(phoneNumber, 'https://traderscontent.livetraders.com/galary/875199.jpeg');
+      console.log("sendWelcomeMessageTemplate ====== ", res1);
+      let res2 = await sendFlowTemplate(phoneNumber, 'enter_your_details');
+      console.log("sendFlowTemplate ====== ", res2);
       return
     }
 
@@ -1262,50 +1264,6 @@ export async function sendReferralCodeCtaMessage(
       )
     }
     throw error // Re-throw the error for the caller to handle
-  }
-}
-
-async function sendWelcomeMessageTemplate(
-  recipient: string,
-  imageUrl: string,
-  languageCode: string = 'en'
-) {
-  try {
-    console.log(`Sending flow imageUrl "${imageUrl}" to ${recipient}...`)
-    const response = await axios({
-      method: 'POST',
-      url: `${flowBaseUrl}/messages`,
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      data: {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: recipient,
-        type: 'template',
-        template: {
-          name: 'welcome_message_with_img',
-          language: { code: languageCode },
-          components: [
-            {
-              type: 'header',
-              parameters: [
-                {
-                  type: 'image',
-                  image: { link: imageUrl }
-                }
-              ]
-            }
-          ]
-        }
-      }
-    });
-    console.log("image template data : ", response.data);
-    return response.data;
-  } catch (error) {
-    console.error('Error sending welcome message template:', error);
-    throw error;
   }
 }
 
