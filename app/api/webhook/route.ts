@@ -159,10 +159,10 @@ async function handleIncomingMessage(
       // Create a new user with minimal info
       console.log('Creating new user:', phoneNumber);
       // the new user form will be added here right now we are only figuring out the flow for the existing user
-      let res1 = await sendWelcomeMessageTemplate(phoneNumber, 'https://traderscontent.livetraders.com/galary/875199.jpeg');
-      console.log("sendWelcomeMessageTemplate ====== ", res1);
+     // let res1 = await sendWelcomeMessageTemplate(phoneNumber, 'https://traderscontent.livetraders.com/galary/875199.jpeg');
+    //  console.log("sendWelcomeMessageTemplate ====== ", res1);
       let res2 = await sendFlowTemplate(phoneNumber, 'enter_your_details');
-      console.log("sendFlowTemplate ====== ", res2);
+     // console.log("sendFlowTemplate ====== ", res2);
       return
     }
 
