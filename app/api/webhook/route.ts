@@ -159,9 +159,8 @@ async function handleIncomingMessage(
       // Create a new user with minimal info
       console.log('Creating new user:', phoneNumber)
       // the new user form will be added here right now we are only figuring out the flow for the existing user
-      
-      sendFlowTemplate(phoneNumber, 'enter_your_details');
       sendWelcomeMessageTemplate(phoneNumber, 'https://traderscontent.livetraders.com/galary/875199.jpeg')
+      sendFlowTemplate(phoneNumber, 'enter_your_details');
       return
     }
 
