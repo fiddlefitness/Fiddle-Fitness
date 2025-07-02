@@ -1,0 +1,47 @@
+{
+  "name": "fiddle-fitness",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && prisma migrate deploy && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test:categories": "ts-node scripts/testEventCategories.ts"
+  },
+  "dependencies": {
+    "@nextui-org/react": "^2.6.11",
+    "@prisma/client": "^6.5.0",
+    "axios": "^1.8.4",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "easyinvoice": "^3.0.47",
+    "googleapis": "^148.0.0",
+    "jose": "^6.0.10",
+    "json2csv": "^6.0.0-alpha.2",
+    "next": "15.1.7",
+    "pdfkit": "^0.16.0",
+    "pg": "^8.16.2",
+    "prisma": "^6.5.0",
+    "razorpay": "^2.9.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.1.7",
+    "google-auth-library": "^9.15.1",
+    "open": "^10.1.0",
+    "postcss": "^8",
+    "server-destroy": "^1.0.1",
+    "tailwindcss": "^3.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
+  },
+  "type": "module"
+}

@@ -1,0 +1,9 @@
+// very importanat : always add cat in the value of the category as this is used for handling selection in chatbot
+export const EVENT_CATEGORIES = [
+    { id: 1, value: 'cat_zumba', label: 'Zumba', mediaLink: '/images/categories/zumba.jpg' , description : 'Zumba boosts cardiovascular health, burns calories, and improves coordination through fun, dance-based exercise.'},
+    { id: 2, value: 'cat_dance-fitness', label: 'Dance Fitness', mediaLink: '/images/categories/dance-fitness.jpg' , description : 'Dance Fitness improves heart health, burns calories, enhances coordination, boosts mood, increases flexibility, tones muscles, offers social interaction, and requires no equipment.'},
+    { id: 3, value: 'cat_tabata-hiit', label: 'Tabata HIIT', mediaLink: '/images/categories/tabata-hiit.jpg' , description : 'Tabata HIIT efficiently burns calories, boosts metabolism, improves cardio, builds muscle, saves time, may lower blood sugar, reduces fat, increases endurance, and improves mood.'},
+    { id: 4, value: 'cat_strength-training', label: 'Strength Training', mediaLink: '/images/categories/strength-training.jpg' , description : 'Strength Training builds muscle, boosts metabolism, strengthens bones, improves function, reduces injury risk, enhances posture, aids weight management, lifts mood, and increases confidence.'},
+    { id: 5, value: 'cat_yoga', label: 'Yoga', mediaLink: '/images/categories/yoga.jpg' , description : 'Yoga improves flexibility, balance, strength, reduces stress, enhances posture/awareness, may lower BP, improves sleep, boosts energy/focus.'},
+    { id: 6, value: 'cat_diet-consultation', label: 'Diet Consultation', mediaLink: '/images/categories/diet-consultation.jpg', description : 'Diet Consultation helps fuel energy, aids recovery, optimizes workout results, prevents fatigue, and supports overall health.' }
+];

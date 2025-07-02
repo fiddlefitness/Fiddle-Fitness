@@ -1,0 +1,241 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String
+  city         String?
+  gender       String?
+  mobileNumber String   @unique
+  yearOfBirth  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // for referral
+  referralCode       String  @unique
+  fiddleFitnessCoins Int     @default(0)
+  referredBy         User?   @relation("UserReferrals", fields: [referredById], references: [id])
+  referredById       String?
+  referredUsers      User[]  @relation("UserReferrals")
+
+  // WhatsApp Bot Conversation State
+  conversationState String?   @default("idle")
+  lastInteraction   DateTime?
+  contextData       Json? // For storing context-specific data during conversation
+
+  // Relationships
+  registeredEvents EventRegistration[]
+  completedEvents  CompletedEvent[]
+  poolAttendees    PoolAttendee[]
+  payments         Payment[]
+  paymentOrders    PaymentOrder[]
+  invoices         Invoice[]
+  reviews          EventReview[]
+}
+
+model Event {
+  id                   String    @id @default(cuid())
+  title                String
+  description          String?
+  eventDate            DateTime
+  eventTime            String
+  location             String?
+  category             String
+  price                Float?    @default(0)
+  maxCapacity          Int       @default(100)
+  poolCapacity         Int       @default(100) // Added pool capacity field
+  registrationDeadline DateTime?
+  poolsAssigned        Boolean   @default(false)
+  notificationSent     Boolean   @default(false)
+  reminder2Sent        Boolean   @default(false) // Added to track when reminder 2 is sent
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // Relationships
+  registrations EventRegistration[]
+  completions   CompletedEvent[]
+  eventTrainers EventTrainer[]
+  pools         Pool[]
+  paymentOrders PaymentOrder[]
+  invoices      Invoice[]
+  reviews       EventReview[]
+}
+
+model Trainer {
+  id           String   @id @default(cuid())
+  name         String
+  email        String?
+  mobileNumber String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relationships
+  events EventTrainer[]
+  pools  Pool[]
+}
+
+// Junction table for many-to-many relationship between Event and User (registered)
+model EventRegistration {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  event     Event    @relation(fields: [eventId], references: [id])
+  eventId   String
+  payment   Payment? @relation(fields: [paymentId], references: [id])
+  paymentId String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, eventId])
+}
+
+// Junction table for many-to-many relationship between Event and User (completed)
+model CompletedEvent {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  event       Event    @relation(fields: [eventId], references: [id])
+  eventId     String
+  completedAt DateTime @default(now())
+
+  @@unique([userId, eventId])
+}
+
+// Junction table for many-to-many relationship between Event and Trainer
+model EventTrainer {
+  id        String   @id @default(cuid())
+  trainer   Trainer  @relation(fields: [trainerId], references: [id])
+  trainerId String
+  event     Event    @relation(fields: [eventId], references: [id])
+  eventId   String
+  createdAt DateTime @default(now())
+
+  @@unique([trainerId, eventId])
+}
+
+// Pool model for subdivisions within an event
+model Pool {
+  id       String  @id @default(cuid())
+  name     String?
+  meetLink String?
+  capacity Int     @default(100)
+  isActive Boolean @default(false)
+
+  // Use onDelete: Cascade to automatically delete pools when the event is deleted
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId String
+
+  // Use onDelete: Cascade to automatically delete associated PoolAttendee
+  trainer   Trainer?       @relation(fields: [trainerId], references: [id])
+  trainerId String?
+  attendees PoolAttendee[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Junction table for many-to-many relationship between Pool and User (attendees)
+model PoolAttendee {
+  id String @id @default(cuid())
+
+  // Use onDelete: Cascade to automatically delete attendees when the pool is deleted
+  pool   Pool   @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  poolId String
+
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  notified  Boolean  @default(false)
+  meetLink  String? // Unique meeting link for each attendee
+  createdAt DateTime @default(now())
+
+  @@unique([poolId, userId])
+}
+
+// Payment model to track payment transactions
+model Payment {
+  id            String  @id @default(cuid())
+  amount        Float // This will store the actual amount paid after discount
+  coinsUsed     Float?  @default(0) // Amount of Fiddle Coins used
+  currency      String  @default("INR")
+  paymentId     String? @unique // Razorpay payment ID
+  orderId       String? // Razorpay order ID
+  status        String // pending, completed, failed, refunded
+  paymentMethod String? // card, upi, netbanking, etc.
+  invoiceUrl    String? // URL to the invoice generated for the payment
+
+  // Relationships
+  user          User                @relation(fields: [userId], references: [id])
+  userId        String
+  registrations EventRegistration[]
+  invoice       Invoice?            @relation(fields: [invoiceId], references: [id])
+  invoiceId     String?             @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Invoice model to track payment invoices
+model Invoice {
+  id                String @id @default(cuid())
+  invoiceId         String @unique // Razorpay invoice ID
+  amount            Float
+  currency          String @default("INR")
+  status            String // created, paid, cancelled
+  razorpayInvoiceId String @unique // Razorpay's invoice ID
+  invoiceUrl        String // URL to view the invoice
+
+  // Relationships
+  user    User     @relation(fields: [userId], references: [id])
+  userId  String
+  event   Event    @relation(fields: [eventId], references: [id])
+  eventId String
+  payment Payment?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// PaymentOrder model to track Razorpay order creation
+model PaymentOrder {
+  id       String @id @default(cuid())
+  orderId  String @unique // Razorpay order ID
+  amount   Float
+  currency String @default("INR")
+  status   String // created, paid, cancelled
+
+  // Relationships
+  user    User   @relation(fields: [userId], references: [id])
+  userId  String
+  event   Event  @relation(fields: [eventId], references: [id])
+  eventId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// New model for event reviews
+model EventReview {
+  id       String  @id @default(cuid())
+  rating   Int? // 1-5 rating
+  feedback String? // Additional feedback or reason for dissatisfaction
+  status   String // pending, completed
+
+  // Relationships
+  user    User   @relation(fields: [userId], references: [id])
+  userId  String
+  event   Event  @relation(fields: [eventId], references: [id])
+  eventId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, eventId])
+}
