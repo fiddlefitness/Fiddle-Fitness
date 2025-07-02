@@ -10,7 +10,7 @@ export default function EventsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-    alert("cxv");
+    alert("cxccccv");
 
   useEffect(() => {
     fetchEvents();
