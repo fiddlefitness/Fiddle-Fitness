@@ -70,6 +70,7 @@ const flowBaseUrl = `https://graph.facebook.com/${VERSION}/${PHONE_NUMBER_ID}`
 // Define conversation states
 enum ConversationState {
   IDLE = 'idle',
+  AWAITING_CATEGORY_BEFORE_SELECTION = 'awaiting_category_before_selection',
   AWAITING_CATEGORY_SELECTION = 'awaiting_category_selection',
   AWAITING_EVENT_SELECTION = 'awaiting_event_selection',
   AWAITING_REGISTRATION_CONFIRMATION = 'awaiting_registration_confirmation',
@@ -147,11 +148,35 @@ async function handleIncomingMessage(
     //   console.error("❌ PostgreSQL connection error:", error.message);
     // }
 
+
+const text = message.type === 'text' && message.text?.body?.trim();
+
+if (text && text.toLowerCase() === 'get help') {
+  // 1️⃣ Send a simple text reply
+ await sendTextMessage(phoneNumber, `
+*Check the following before reaching out for help:*
+
+1. Check Internet: Is your Wi‑Fi or data connection stable?  
+2. Verify Link: Are you using the correct Zoom meeting link?  
+3. Zoom App: Is the Zoom app installed and up‑to‑date?  
+4. Email Match: Are you logged into Zoom with the email you used for registration?  
+5. Password: If prompted, is your Zoom password correct?  
+6. Restart App: Try closing and reopening the Zoom app.  
+7. Device Restart: If still stuck, try restarting your device.
+
+Let me know if you still need further assistance!  
+`);
+
+  return ;
+}
+
+
+
     const result = await pool.query(
     'SELECT * FROM "User" WHERE "mobileNumber" = $1 LIMIT 1',
     [phoneNumber]
     );
-    const user = result.rows[0];
+    let  user = result.rows[0];
     console.log("✅ Found User:", user);
     
 
@@ -172,12 +197,15 @@ async function handleIncomingMessage(
         lastInteraction: new Date(),
       }
 
+     
       // Check if last interaction was more than 15 minutes ago
       if (user.lastInteraction) {
         const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000)
+
+                  console.log(new Date(user.lastInteraction),'<',fifteenMinutesAgo)
         if (new Date(user.lastInteraction) < fifteenMinutesAgo) {
           console.log('Reset conversation state to IDLE due to inactivity')
-          updateData.conversationState = ConversationState.IDLE
+      updateData.conversationState = ConversationState.IDLE
         }
       } else {
         // If no last interaction, ensure we have a conversation state
@@ -185,12 +213,18 @@ async function handleIncomingMessage(
           user.conversationState || ConversationState.IDLE
       }
 
+       
+
+  
       // Update user with a single database call
       user = await prisma.user.update({
         where: { id: user.id },
         data: updateData,
       })
     }
+
+
+   
 
     // Check if this is a button response
     if (
@@ -201,6 +235,8 @@ async function handleIncomingMessage(
       const handled = await handleButtonResponse(user, message)
       if (handled) return // Exit if we handled the button
     }
+
+
 
     if (
       message?.type === 'interactive' &&
@@ -236,6 +272,11 @@ async function handleIncomingMessage(
     // Handle message based on current conversation state
     switch (user?.conversationState) {
       case ConversationState.IDLE:
+        await handleCategorybeforeSelection(user, message)
+        break
+
+
+         case ConversationState.AWAITING_CATEGORY_BEFORE_SELECTION:
         await handleIdleState(user, message)
         break
 
@@ -286,10 +327,7 @@ async function handleIncomingMessage(
 async function handleIdleState(user: any, message: any) {
   try {
     // Send welcome message
-    await sendTextMessage(
-      user.mobileNumber,
-      `Hello ${user.name} 👋, welcome back! Let's explore your fitness journey together.`,
-    )
+  
 
     // Check if user is registered for any events
     const userRegisteredEvents = await prisma.eventRegistration.findMany({
@@ -614,9 +652,9 @@ async function handleRegisteredEventSelection(user: any, message: any) {
   }
 }
 
-/**
- * Fetch available event categories and send as interactive list
- */
+
+
+
 async function sendCategoryList(user: any) {
   try {
     // Fetch upcoming events with categories
@@ -695,6 +733,7 @@ async function sendCategoryList(user: any) {
       where: { id: user.id },
       data: {
         conversationState: ConversationState.AWAITING_CATEGORY_SELECTION,
+        lastInteraction: new Date(), // reset the timer
       },
     })
 
@@ -706,10 +745,101 @@ async function sendCategoryList(user: any) {
 }
 
 /**
+ * Fetch available event categories and send as interactive list
+ */
+async function handleCategorybeforeSelection(user: any, message: any) {
+  try {
+    // Fetch upcoming events with categories
+  
+ // await sendTextMessage(
+ //     user.mobileNumber,
+  //    `Hello ${user.name} 👋, welcome back! Let's explore your fitness journey together.`,
+  //  )
+
+
+   //   await sendTextMessage(
+   //   user.mobileNumber,
+   //   `Let’s get started by knowing you. Please fill out a brief form to proceed. `,
+  //  )
+
+
+    await sendTextMessage(
+      user.mobileNumber,
+      `Thanks ${user.name} 👋, we now know you well. "Thrilled you're here!`,
+    )
+
+
+      await sendTextMessage(
+      user.mobileNumber,
+      `Your well-being is important,  please consider any health conditions before engaging in physical activity.`,
+    )
+
+  const listMessage = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: user.mobileNumber,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        
+        body: {
+      text: 'Ready to join this event?' 
+        },
+        footer: {
+          text: 'Select an event for more details',
+        },
+        action: {
+        buttons: [
+          {
+            type: 'reply',
+            reply: {
+              id: 'count_me_in',
+              title: 'Count me in'
+            }
+          },
+          {
+            type: 'reply',
+            reply: {
+              id: 'skip_event',
+              title: "I'll skip this one"
+            }
+          }
+        ]
+      },
+      },
+    }
+
+     await axios.post(WHATSAPP_API_URL, listMessage, {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    // Update user state to awaiting category selection
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        conversationState: ConversationState.AWAITING_CATEGORY_BEFORE_SELECTION,
+        lastInteraction: new Date(), // reset the timer
+      },
+    })
+
+    
+  } catch (error) {
+    console.error('Error sending category list:', error)
+    throw error
+  }
+}
+
+/**
  * Get unique categories from upcoming events
  */
 async function getUpcomingEventCategories() {
   const now = new Date()
+
+  console.log("today date",now);
+
   const upcomingEvents = await prisma.event.findMany({
     where: {
       eventDate: {
@@ -745,6 +875,7 @@ async function getUpcomingEventCategories() {
   )
 }
 
+
 /**
  * Handle category selection response from user
  */
@@ -754,6 +885,8 @@ async function handleCategorySelection(user: any, message: any) {
     let selectedCategory = null
 
     console.log('categoryselection', message)
+
+    
 
     if (
       message.type === 'interactive' &&
@@ -855,6 +988,19 @@ async function sendEventsList(
       cat => cat.value === categoryName,
     )
     const categoryLabel = categoryInfo ? categoryInfo.label : categoryName
+
+
+     await sendTextMessage(
+     phoneNumber,
+     `Thanks for your selection! ${categoryLabel} 👋,   boosts cardiovascular health, burns calories, and improves coordination through fun, dance-based exercise.`,
+   )
+
+
+   await sendTextMessage(
+     phoneNumber,
+     `Kindly select the event you wish to participate in from the options provided`,
+    )
+
 
     // Format event dates for display
     const formattedEvents = events.map(event => {
@@ -1078,6 +1224,8 @@ async function handleEventSelection(user: any, message: any) {
       baseUrl,
     )
 
+   const msgtitle = `Great choice! You're confirmed for ${event.title}`;
+
     // Send interactive button message
     // Send event details as text message
     await axios.post(
@@ -1089,8 +1237,8 @@ async function handleEventSelection(user: any, message: any) {
         type: 'text',
         text: {
           body: `*${
-            event.title
-          }*\n\n${messageBody}\n\nRegister here: ${registrationUrl.toString()}`,
+            msgtitle
+          }*\n\n${messageBody}\n\nKindly complete the payment to secure your spot: : ${registrationUrl.toString()}`,
         },
       },
       {
@@ -1273,6 +1421,18 @@ async function sendFlowTemplate(
   languageCode: string = 'en',
 ) {
   try {
+
+     await sendTextMessage(
+     recipient,
+      `Hi there! Welcome to Fiddle Fitness. We're equally excited & ready to help.`,
+    )
+
+
+     await sendTextMessage(
+      recipient,
+      `Let’s get started by knowing you. Please fill out a brief form to proceed. `,
+   )
+
     console.log(`Sending flow template "${templateName}" to ${recipient}...`)
 
     const response = await axios({
@@ -1383,6 +1543,13 @@ async function handleButtonResponse(user: any, message: any) {
       await sendRegisteredEventsList(user)
     } else if (buttonId === 'register_new_event') {
       await sendCategoryList(user)
+    }else if (buttonId === 'count_me_in') {
+      await sendCategoryList(user)
+    }else if (buttonId === 'skip_event') {
+      await sendTextMessage(
+        user.mobileNumber,
+        'Thanks for lettin us know. Prioritize your health, and well have more sessions soon!',
+      )
     }
     return true // Indicate that we handled the button
   }
