@@ -382,11 +382,11 @@ export async function POST(request: NextRequest) {
     }).format(amountPaid / 100)
 
     // Send confirmation message via WhatsApp
-    let confirmationMessage = `Here's confirming the receipt of your payment for *${event.title}*.`;
+    let confirmationMessage = `This confirms receipt of your payment for *${event.title}*.`;
     if (actualCoinsToDeduct > 0) {
         confirmationMessage += ` You used ${actualCoinsToDeduct} Fiddle Fitness Coins for a discount of ₹${actualCoinsToDeduct.toFixed(2)}.`;
     }
-    confirmationMessage += ` Your official payment receipt will be sent to your email address.`;
+      confirmationMessage += ` Your official payment receipt will be sent to your email address. Event details will be shared 24-48 hrs prior to the scheduled date & time.`;
     
     await sendTextMessage(
       user.mobileNumber,
@@ -399,10 +399,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Follow-up message
-    await sendTextMessage(
-      user.mobileNumber,
-      `Next steps: Event details will be shared 24 hours prior to the scheduled time. For assistance after receiving the link, reply to this WhatsApp number and click "Get Help." Please carefully review the instructions provided.`
-    )
+ //   await sendTextMessage(
+ //     user.mobileNumber,
+ //     `Next steps: Event details will be shared 24 hours prior to the scheduled time. For assistance after receiving the link, reply to this WhatsApp number and click "Get Help." Please carefully review the instructions provided.`
+//    )
 
     return NextResponse.json(
       {
