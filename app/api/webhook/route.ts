@@ -264,7 +264,7 @@ Let me know if you still need further assistance!
         // await sendReferralCodeCtaMessage(phoneNumber, '50', user.referralCode)
         await sendWelcomeAboardTemplate(phoneNumber, '50', user.referralCode)
 
-        await sendCategoryList(user)
+       await handleCategorybeforeSelection(user)
         return // Exit early as flow responses don't need further processing
       }
     }
@@ -272,7 +272,7 @@ Let me know if you still need further assistance!
     // Handle message based on current conversation state
     switch (user?.conversationState) {
       case ConversationState.IDLE:
-        await handleCategorybeforeSelection(user, message)
+        await handleCategorybeforeSelection(user)
         break
 
 
@@ -747,7 +747,7 @@ async function sendCategoryList(user: any) {
 /**
  * Fetch available event categories and send as interactive list
  */
-async function handleCategorybeforeSelection(user: any, message: any) {
+async function handleCategorybeforeSelection(user: any) {
   try {
     // Fetch upcoming events with categories
   
