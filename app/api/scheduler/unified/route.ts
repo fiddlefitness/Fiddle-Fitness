@@ -2,7 +2,8 @@ import { withApiKey } from '@/lib/authMiddleware';
 import { prisma } from '@/lib/prisma';
 import {
     sendTrainerReminder2Template,
-    sendUserReminder2Template
+    sendUserReminder2Template,
+    sendTextMessage
 } from '@/lib/whatsapp';
 import { NextResponse } from 'next/server';
 
@@ -294,7 +295,44 @@ async function handleSendReminders(runType: string) {
         }
         
         // Process reminders for this event
-        const eventResult = await processEventReminders(event);
+       // const eventResult = await processEventReminders(event);
+
+
+     
+  const now = new Date();
+  const eventDateTime = new Date(event.eventDate);
+
+  // Parse eventTime (e.g., "10:00 AM - 12:00 PM")
+  const eventTimeParts = event.eventTime?.split('-')[0].trim();
+  const eventHour = parseInt(eventTimeParts.split(':')[0]);
+  const eventMinute = parseInt(eventTimeParts.split(':')[1]) || 0;
+  eventDateTime.setHours(eventHour);
+  eventDateTime.setMinutes(eventMinute);
+
+  const diffMs = eventDateTime.getTime() - now.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  if (diffMinutes <= 60 && !event.reminder60Sent) {
+    // send 60-min before message
+    await processEventReminders(event, '60min');
+    await prisma.event.update({ where: { id: event.id }, data: { reminder60Sent: true }});
+  } else if (diffMinutes <= 1440 && !event.reminder24Sent) {
+    // send 24h before message
+    await processEventReminders(event, '24hr');
+    await prisma.event.update({ where: { id: event.id }, data: { reminder24Sent: true }});
+  } else if (diffMinutes <= 2880 && !event.reminder48Sent) {
+    // send 48h before message
+    await processEventReminders(event, '48hr');
+    await prisma.event.update({ where: { id: event.id }, data: { reminder48Sent: true }});
+  } else if (diffMinutes > 0 && diffMinutes <= 120) { // within 2 hours of end
+    // send 48h before message
+      await processEventReminders(event); // 👈 Define this function to send WhatsApp rating link
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { ratingSent: true }
+    });
+  }
+
         
         // Mark event as having had reminder2 sent
         await prisma.event.update({
@@ -385,8 +423,9 @@ function shouldSendReminderNow(eventTime: string | null, runType: string): boole
 
 /**
  * Process sending reminders for a specific event
+ * async function sendReminder(event: any, type: '60min' | '24hr' | '48hr') {
  */
-async function processEventReminders(event: any) {
+async function processEventReminders(event: any, type: '60min' | '24hr' | '48hr') {
   const userResults = [];
   const trainerResults = [];
   
@@ -414,11 +453,47 @@ async function processEventReminders(event: any) {
       const meetLink = poolAttendee?.meetLink || poolWithLinks.meetLink;
       
       if (meetLink && registration.user.mobileNumber) {
-        await sendUserReminder2Template(
-          registration.user.mobileNumber,
-          event.title,
-          meetLink
-        );
+            if (type === '60min') {
+           await sendTextMessage(registration.user.mobileNumber,`
+         Check the following , before reaching out for help - 
+1- Check Internet: Is your Wi-Fi or data connection stable?
+2- Verify Link: Are you using the correct Zoom meeting link?
+3- Zoom App: Is the Zoom app installed and up-to-date?
+4- Email Match: Are you logged into the Zoom app with the email you used for registration (if required)?
+5- Password: If prompted, is your Zoom account password correct?
+6- Restart: Try closing and reopening the Zoom app.
+7- Device Restart: If still stuck, try restarting your device.
+
+Still need help ? Click " Get Help"
+            `);
+        } else if (type === '24hr') {
+        await sendTextMessage(registration.user.mobileNumber,`
+           To ensure a smooth experience for ${event.title}:
+1- Check your internet connection ( 30 Mbps or more ) and Zoom app logged in with the email given during registration. 
+2- Device: Smart TV or Laptop preferred (mobile as last option).
+3- Audio: Connect to external speakers/headphones for better sound.
+4- Have your workout space and water ready.
+5- Wear comfortable workout attire.
+            `);
+        } else if (type === '48hr') {
+          await sendUserReminder2Template(
+           registration.user.mobileNumber,
+            event.title,
+            meetLink
+          );
+        }else{
+   await sendTextMessage(registration.user.mobileNumber, `
+        Please rate your satisfaction with the event on a scale of 1 (Very Unsatisfied) to 5 (Very Satisfied). Your feedback is important to us.
+            `);
+               await sendTextMessage(registration.user.mobileNumber, `
+        Hello again, [Customer Name]! Ready for another great session?
+            `);
+       await sendTextMessage(registration.user.mobileNumber, `
+        Your well-being is important,  please consider any health conditions before engaging in physical activity.
+            `);
+
+        }
+    
         
         userResults.push({
           userId: registration.userId,
@@ -443,7 +518,34 @@ async function processEventReminders(event: any) {
       
       // For trainers, we'll use the pool's main link
       if (poolWithLinks.meetLink && trainer.mobileNumber) {
-        await sendTrainerReminder2Template(
+           if (type === '60min') {
+       await sendTextMessage(trainer.mobileNumber,`
+         Check the following , before reaching out for help - 
+1- Check Internet: Is your Wi-Fi or data connection stable?
+2- Verify Link: Are you using the correct Zoom meeting link?
+3- Zoom App: Is the Zoom app installed and up-to-date?
+4- Email Match: Are you logged into the Zoom app with the email you used for registration (if required)?
+5- Password: If prompted, is your Zoom account password correct?
+6- Restart: Try closing and reopening the Zoom app.
+7- Device Restart: If still stuck, try restarting your device.
+
+Still need help ? Click " Get Help"
+            `);
+        } else if (type === '24hr') {
+                   await sendTextMessage(trainer.mobileNumber,`
+            Hi ${trainer.name}, A friendly reminder - 
+1- Test Your Tech: Check audio, video, and internet connection beforehand.
+2- Music Ready: Ensure your Zumba playlist is prepared and shareable (if needed).
+3- Clear Space: Have enough room to move freely on camera.
+4- Good Lighting: Position yourself where you're well-lit.
+5- Engage Participants: Be energetic, clear with cues, and encourage interaction.
+6- Water Handy: Keep water accessible to stay hydrated.
+7 Start On Time: Log in a few minutes early.
+8 - Technical Backup: Have a plan B if technical issues arise.
+9- Fun Attitude: Bring your energy and enthusiasm!
+            `);
+        } else if (type === '48hr') {
+           await sendTrainerReminder2Template(
           trainer.mobileNumber,
           trainer.name,
           event.title,
@@ -451,6 +553,10 @@ async function processEventReminders(event: any) {
           poolWithLinks.meetLink
         );
         
+        }
+
+
+    
         trainerResults.push({
           trainerId: trainer.id,
           status: 'success'
