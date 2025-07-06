@@ -59,6 +59,10 @@ model Event {
   reminder2Sent        Boolean   @default(false) // Added to track when reminder 2 is sent
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
+ reminder48Sent   Boolean  @default(false)
+  reminder24Sent   Boolean  @default(false)
+  reminder60Sent   Boolean  @default(false)
+  ratingSent       Boolean  @default(false) // 👈 Add this
 
   // Relationships
   registrations EventRegistration[]
