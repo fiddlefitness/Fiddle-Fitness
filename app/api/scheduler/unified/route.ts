@@ -55,23 +55,24 @@ async function handleAssignPools() {
     const executionTime = new Date();
     console.log(`[${executionTime.toISOString()}] Starting pool assignment task`);
     
-    // Calculate tomorrow's date (at midnight)
     const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-    
-    // End of tomorrow
-    const tomorrowEnd = new Date(tomorrow);
-    tomorrowEnd.setHours(23, 59, 59, 999);
+
+// Calculate 48 hours ahead (start of day)
+const twoDaysLater = new Date(today);
+twoDaysLater.setDate(twoDaysLater.getDate() + 2);
+twoDaysLater.setHours(0, 0, 0, 0);
+
+// End of that day
+const twoDaysLaterEnd = new Date(twoDaysLater);
+twoDaysLaterEnd.setHours(23, 59, 59, 999);
     
     // Find all events happening tomorrow that don't have pools assigned yet
     const eventsForTomorrow = await prisma.event.findMany({
       where: {
-        eventDate: {
-          gte: tomorrow,
-          lte: tomorrowEnd
-        },
+       eventDate: {
+  gte: today,
+  lte: twoDaysLaterEnd
+},
         poolsAssigned: false
       },
       select: {
@@ -83,6 +84,8 @@ async function handleAssignPools() {
       }
     });
 
+
+    console.log("imran",eventsForTomorrow);
     console.log(`[${executionTime.toISOString()}] Found ${eventsForTomorrow.length} events for tomorrow that may need pool assignment`);
   
     if (eventsForTomorrow.length === 0) {
@@ -234,16 +237,24 @@ async function handleSendReminders(runType: string) {
     const todayEnd = new Date(today);
     todayEnd.setHours(23, 59, 59, 999);
     
+    const threeDaysFromNow = new Date();
+threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+    
     // Find events happening today with assigned pools
     const todayEvents = await prisma.event.findMany({
       where: {
         eventDate: {
           gte: today,
-          lte: todayEnd
+          lte: threeDaysFromNow
         },
         poolsAssigned: true,
+         OR: [
+      { reminder60Sent: false },
+      { reminder24Sent: false },
+      { reminder48Sent: false }
+    ]
         // Check reminder2Sent status
-        reminder2Sent: false
+     //   reminder2Sent: false
       },
       include: {
         registrations: {
