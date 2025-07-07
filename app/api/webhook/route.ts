@@ -1544,6 +1544,10 @@ async function handleButtonResponse(user: any, message: any) {
     } else if (buttonId === 'register_new_event') {
       await sendCategoryList(user)
     }else if (buttonId === 'count_me_in') {
+       await sendTextMessage(
+        user.mobileNumber,
+        'Choose a fitness activity of your liking to proceed.',
+      )
       await sendCategoryList(user)
     }else if (buttonId === 'skip_event') {
       await sendTextMessage(
