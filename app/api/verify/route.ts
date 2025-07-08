@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 import axios from 'axios'
 import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
+import { createInvoicePDF } from "@/lib/pdfReceipt";
+import { sendInvoiceEmail } from "@/lib/email";   
 
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN
 const WHATSAPP_API_URL = `https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`
@@ -393,9 +395,34 @@ export async function POST(request: NextRequest) {
       confirmationMessage
     )
 
+
+      const invoiceData = {
+    invoiceNumber: razorpayPaymentId,
+    date: new Date().toLocaleDateString(),
+    clientName: user.name,
+    clientEmail:  user.email,
+    clientPhone: user.mobileNumber,
+    items: [
+      {
+        description: "Annual Membership",
+        quantity: 1,
+        price: formattedAmount,
+      },
+    ],
+  };
+
+  const pdfBuffer = await createInvoicePDF(invoiceData);
+
     // After successful payment verification and before sending WhatsApp messages
     if (user.email) {
       await sendEmailReceipt(razorpayPaymentId, user.email);
+
+await sendInvoiceEmail({
+    to: invoiceData.clientEmail,
+    subject: "Fiddle Fitness Invoice",
+    text: "Please find your invoice attached.",
+    attachmentBuffer: pdfBuffer,
+  });
     }
 
     // Follow-up message
