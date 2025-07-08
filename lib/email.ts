@@ -1,27 +1,40 @@
-import nodemailer from 'nodemailer'
+// lib/email.ts
+import nodemailer from "nodemailer";
 
-export async function sendInvoiceEmail(toEmail: string, pdfBuffer: Buffer) {
+export async function sendInvoiceEmail({
+  to,
+  subject,
+  text,
+  attachmentBuffer,
+}: {
+  to: string;
+  subject: string;
+  text: string;
+  attachmentBuffer: Buffer;
+}) {
   const transporter = nodemailer.createTransport({
-    service: 'gmail',
+   service: 'gmail',
     auth: {
-      user: process.env.EMAIL_SENDER_ADDRESS,
-      pass: process.env.EMAIL_SENDER_PASSWORD
-    }
-  })
+ user: "imranmohamed46@gmail.com",
+        pass: "wpyackygkpcxqqgt",
+    },
+  });
 
-  const info = await transporter.sendMail({
-    from: `"Fiddle Fitness" <${process.env.EMAIL_SENDER_ADDRESS}>`,
-    to: toEmail,
-    subject: 'Your Payment Invoice - Fiddle Fitness',
-    text: 'Attached is your official receipt for the event payment.',
+
+
+  await transporter.sendMail({
+     from: `"Fiddle Fitness" <afraa@2gmil.com>`,
+    to,
+    subject,
+    text,
     attachments: [
       {
-        filename: 'invoice.pdf',
-        content: pdfBuffer,
-        contentType: 'application/pdf'
-      }
-    ]
-  })
-
-  console.log('Email sent:', info.messageId)
+        filename: "invoice.pdf",
+        content: attachmentBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  });
 }
+
+
