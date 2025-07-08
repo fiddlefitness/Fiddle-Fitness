@@ -404,7 +404,7 @@ export async function POST(request: NextRequest) {
     clientPhone: user.mobileNumber,
     items: [
       {
-        description: "Annual Membership",
+        description: event.title,
         quantity: 1,
         price: formattedAmount,
       },
