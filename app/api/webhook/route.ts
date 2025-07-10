@@ -1670,7 +1670,7 @@ async function sendFlowTemplate(
 
  await sendImageAndText(
   recipient,
-  'https://www.digitalharvest.in/img/fit.jpeg',
+  'https://fiddle-fitness.onrender.com/welcome.jpeg',
   'Hi there! Welcome to Fiddle Fitness. We are equally excited & ready to help.'
 );
 
