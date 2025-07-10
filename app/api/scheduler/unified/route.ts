@@ -57,6 +57,8 @@ async function handleAssignPools() {
     
     const today = new Date();
 
+    
+
 // Calculate 48 hours ahead (start of day)
 const twoDaysLater = new Date(today);
 twoDaysLater.setDate(twoDaysLater.getDate() + 2);
@@ -67,11 +69,21 @@ const twoDaysLaterEnd = new Date(twoDaysLater);
 twoDaysLaterEnd.setHours(23, 59, 59, 999);
     
     // Find all events happening tomorrow that don't have pools assigned yet
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    
+    // End of tomorrow
+    const tomorrowEnd = new Date(tomorrow);
+    tomorrowEnd.setHours(23, 59, 59, 999);
+const seventyTwoHoursLater = new Date(today.getTime() + 72 * 60 * 60 * 1000);
+
     const eventsForTomorrow = await prisma.event.findMany({
       where: {
        eventDate: {
-  gte: today,
-  lte: twoDaysLaterEnd
+     gte: seventyTwoHoursLater,
+      lt: new Date(seventyTwoHoursLater.getTime() + 60 * 60 * 1000),
 },
         poolsAssigned: false
       },
@@ -85,7 +97,7 @@ twoDaysLaterEnd.setHours(23, 59, 59, 999);
     });
 
 
-    console.log("imran",eventsForTomorrow);
+  
     console.log(`[${executionTime.toISOString()}] Found ${eventsForTomorrow.length} events for tomorrow that may need pool assignment`);
   
     if (eventsForTomorrow.length === 0) {
@@ -237,21 +249,41 @@ async function handleSendReminders(runType: string) {
     const todayEnd = new Date(today);
     todayEnd.setHours(23, 59, 59, 999);
     
-    const threeDaysFromNow = new Date();
-threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+
+// Calculate 48 hours ahead (start of day)
+const twoDaysLater = new Date(today);
+twoDaysLater.setDate(twoDaysLater.getDate() + 2);
+twoDaysLater.setHours(0, 0, 0, 0);
+
+// End of that day
+const twoDaysLaterEnd = new Date(twoDaysLater);
+twoDaysLaterEnd.setHours(23, 59, 59, 999);
+    
+    // Find all events happening tomorrow that don't have pools assigned yet
+
+// Start of 48-hour window (48 hours from now)
+const fortyEightHoursLaterStart = new Date(today.getTime() + 48 * 60 * 60 * 1000);
+fortyEightHoursLaterStart.setMinutes(0, 0, 0); // Optional cleanup
+
+// End of that day (24 hours window after 48h point)
+const fortyEightHoursLaterEnd = new Date(fortyEightHoursLaterStart);
+fortyEightHoursLaterEnd.setHours(23, 59, 59, 999);
+
+
     
     // Find events happening today with assigned pools
     const todayEvents = await prisma.event.findMany({
       where: {
         eventDate: {
-          gte: today,
-          lte: threeDaysFromNow
+        gte: fortyEightHoursLaterStart,
+      lte: fortyEightHoursLaterEnd,
         },
         poolsAssigned: true,
          OR: [
       { reminder60Sent: false },
       { reminder24Sent: false },
-      { reminder48Sent: false }
+      { reminder48Sent: false },
+       { ratingSent: false }
     ]
         // Check reminder2Sent status
      //   reminder2Sent: false
@@ -274,6 +306,10 @@ threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
         }
       }
     });
+
+
+
+  
     
     if (todayEvents.length === 0) {
       return {
@@ -289,88 +325,110 @@ threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
     let failureCount = 0;
     let skippedCount = 0;
     
-    for (const event of todayEvents) {
-      try {
-        // Parse event time to see if we should send reminder now
-        const shouldSendReminder = shouldSendReminderNow(event.eventTime, runType);
+   for (const event of todayEvents) {
+  try {
+    const shouldSend = shouldSendReminderNow(event.eventTime, runType);
+
+    if (!shouldSend) {
+      skippedCount++;
+      results.push({
+        eventId: event.id,
+        title: event.title,
+        status: 'skipped',
+        reason: `Not the right time to send reminder based on run type: ${runType}`
+      });
+      continue;
+    }
+
+    
+    const now = new Date();
+
+    const eventDateTime = new Date(event.eventDate);
+
+    // Parse start time
+    const startTimeStr = event.eventTime?.split('-')[0]?.trim();
+    const [startHourRaw, startMinRaw] = startTimeStr?.split(':') ?? ['0', '0'];
+    let eventHour = parseInt(startHourRaw);
+    let eventMinute = parseInt(startMinRaw) || 0;
+
+    if (startTimeStr?.includes('PM') && eventHour < 12) eventHour += 12;
+    if (startTimeStr?.includes('AM') && eventHour === 12) eventHour = 0;
+
+    eventDateTime.setHours(eventHour, eventMinute, 0, 0);
+
+    const diffMinutes = Math.floor((eventDateTime.getTime() - now.getTime()) / 60000);
+    console.log(`diffMinutes: ${diffMinutes} for event ${event.id}`);
+
+    let eventResult = null;
+
+      console.log(diffMinutes);
+
+    // 48hr first, then 24hr, then 60min
+    if (diffMinutes <= 2880 && !event.reminder48Sent) {
+      eventResult = await processEventReminders(event, '48hr');
+      await prisma.event.update({ where: { id: event.id }, data: { reminder48Sent: true }});
+    } else if (diffMinutes <= 1440 && !event.reminder24Sent) {
+      eventResult = await processEventReminders(event, '24hr');
+      await prisma.event.update({ where: { id: event.id }, data: { reminder24Sent: true }});
+    } else if (diffMinutes <= 60 && !event.reminder60Sent) {
+      eventResult = await processEventReminders(event, '60min');
+      await prisma.event.update({ where: { id: event.id }, data: { reminder60Sent: true }});
+    }
+
+    // Post-event: send rating if event ended
+    const endTimeStr = event.eventTime?.split('-')[1]?.trim();
         
-        if (!shouldSendReminder) {
-          results.push({
-            eventId: event.id,
-            title: event.title,
-            status: 'skipped',
-            reason: `Not the right time to send reminder based on run type: ${runType}`
-          });
-          skippedCount++;
-          continue;
-        }
-        
-        // Process reminders for this event
-       // const eventResult = await processEventReminders(event);
+    if (endTimeStr) {
+      const [endHourRaw, endMinRaw] = endTimeStr.split(':') ?? ['0', '0'];
+      let endHour = parseInt(endHourRaw);
+      let endMinute = parseInt(endMinRaw) || 0;
 
+      if (endTimeStr.includes('PM') && endHour < 12) endHour += 12;
+      if (endTimeStr.includes('AM') && endHour === 12) endHour = 0;
 
-     
-  const now = new Date();
-  const eventDateTime = new Date(event.eventDate);
+      const eventEnd = new Date(event.eventDate);
+      eventEnd.setHours(endHour, endMinute, 0, 0);
 
-  // Parse eventTime (e.g., "10:00 AM - 12:00 PM")
-  const eventTimeParts = event.eventTime?.split('-')[0].trim();
-  const eventHour = parseInt(eventTimeParts.split(':')[0]);
-  const eventMinute = parseInt(eventTimeParts.split(':')[1]) || 0;
-  eventDateTime.setHours(eventHour);
-  eventDateTime.setMinutes(eventMinute);
-
-  const diffMs = eventDateTime.getTime() - now.getTime();
-  const diffMinutes = Math.floor(diffMs / (1000 * 60));
-
-  if (diffMinutes <= 60 && !event.reminder60Sent) {
-    // send 60-min before message
-    await processEventReminders(event, '60min');
-    await prisma.event.update({ where: { id: event.id }, data: { reminder60Sent: true }});
-  } else if (diffMinutes <= 1440 && !event.reminder24Sent) {
-    // send 24h before message
-    await processEventReminders(event, '24hr');
-    await prisma.event.update({ where: { id: event.id }, data: { reminder24Sent: true }});
-  } else if (diffMinutes <= 2880 && !event.reminder48Sent) {
-    // send 48h before message
-    await processEventReminders(event, '48hr');
-    await prisma.event.update({ where: { id: event.id }, data: { reminder48Sent: true }});
-  } else if (diffMinutes > 0 && diffMinutes <= 120) { // within 2 hours of end
-    // send 48h before message
-      await processEventReminders(event); // 👈 Define this function to send WhatsApp rating link
-    await prisma.event.update({
-      where: { id: event.id },
-      data: { ratingSent: true }
-    });
-  }
-
-        
-        // Mark event as having had reminder2 sent
+      if (now > eventEnd && !event.ratingSent) {
+        eventResult = await processEventReminders(event, 'post-event');
         await prisma.event.update({
           where: { id: event.id },
-          data: { reminder2Sent: true }
+          data: { ratingSent: true }
         });
-        
-        results.push({
-          eventId: event.id,
-          title: event.title,
-          status: 'success',
-          details: eventResult
-        });
-        
-        successCount++;
-      } catch (eventError: unknown) {
-        const errorMessage = eventError instanceof Error ? eventError.message : 'Unknown error';
-        console.error(`[${new Date().toISOString()}] Error processing event ${event.id}:`, eventError);
-        results.push({
-          eventId: event.id,
-          title: event.title,
-          status: 'failed',
-          error: errorMessage
-        });
-        failureCount++;
       }
     }
+
+    if (eventResult) {
+      successCount++;
+      results.push({
+        eventId: event.id,
+        title: event.title,
+        status: 'success',
+        details: eventResult
+      });
+    } else {
+      skippedCount++;
+      results.push({
+        eventId: event.id,
+        title: event.title,
+        status: 'skipped',
+        reason: 'No matching reminder condition met'
+      });
+    }
+
+  } catch (eventError: unknown) {
+    const errorMessage = eventError instanceof Error ? eventError.message : 'Unknown error';
+    console.error(`[${new Date().toISOString()}] Error processing event ${event.id}:`, eventError);
+    failureCount++;
+    results.push({
+      eventId: event.id,
+      title: event.title,
+      status: 'failed',
+      error: errorMessage
+    });
+  }
+}
+
     
     // Log a summary
     console.log(`[${new Date().toISOString()}] Send reminders task completed. Success: ${successCount}, Failed: ${failureCount}, Skipped: ${skippedCount}, Total: ${todayEvents.length}`);
@@ -497,7 +555,7 @@ Still need help ? Click " Get Help"
         Please rate your satisfaction with the event on a scale of 1 (Very Unsatisfied) to 5 (Very Satisfied). Your feedback is important to us.
             `);
                await sendTextMessage(registration.user.mobileNumber, `
-        Hello again, [Customer Name]! Ready for another great session?
+       Hello again, ${registration.user.name}, ready for another great session?
             `);
        await sendTextMessage(registration.user.mobileNumber, `
         Your well-being is important,  please consider any health conditions before engaging in physical activity.
