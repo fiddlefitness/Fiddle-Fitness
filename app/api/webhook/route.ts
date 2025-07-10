@@ -206,7 +206,7 @@ Let me know if you still need further assistance!
                   console.log(new Date(user.lastInteraction),'<',fifteenMinutesAgo)
         if (new Date(user.lastInteraction) < fifteenMinutesAgo) {
           console.log('Reset conversation state to IDLE due to inactivity')
-   //   updateData.conversationState = ConversationState.IDLE
+      updateData.conversationState = ConversationState.IDLE
         }
       } else {
         // If no last interaction, ensure we have a conversation state
