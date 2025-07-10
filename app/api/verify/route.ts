@@ -384,7 +384,7 @@ export async function POST(request: NextRequest) {
     }).format(amountPaid / 100)
 
     // Send confirmation message via WhatsApp
-    let confirmationMessage = `This confirms receipt of your payment for *${event.title}*.`;
+    let confirmationMessage = `This confirms receipt of your payment forr *${event.title}*.`;
     if (actualCoinsToDeduct > 0) {
         confirmationMessage += ` You used ${actualCoinsToDeduct} Fiddle Fitness Coins for a discount of ₹${actualCoinsToDeduct.toFixed(2)}.`;
     }
