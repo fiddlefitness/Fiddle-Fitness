@@ -388,14 +388,14 @@ export async function POST(request: NextRequest) {
     if (actualCoinsToDeduct > 0) {
         confirmationMessage += ` You used ${actualCoinsToDeduct} Fiddle Fitness Coins for a discount of ₹${actualCoinsToDeduct.toFixed(2)}.`;
     }
-      confirmationMessage += ` Your official payment receipt will be sent to your email address. Event details will be shared 24-48 hrs prior to the scheduled date & time.`;
+      confirmationMessage += ` Youra official payment receipt will be sent to your email address. Event details will be shared 24-48 hrs prior to the scheduled date & time.`;
     
     await sendTextMessage(
       user.mobileNumber,
       confirmationMessage
     )
 
-
+const priceInRupees = amountPaid / 100;
    const invoiceData = {
     invoiceNumber: razorpayPaymentId,
     date: new Date().toLocaleDateString(),
@@ -406,28 +406,30 @@ export async function POST(request: NextRequest) {
       {
         description: event.title,
         quantity: 1,
-        price: formattedAmount,
+        price: priceInRupees,
       },
     ],
   };
 
-  const pdfBuffer = await createInvoicePDF(invoiceData);
+  
 
 console.log("dhemail",user.email);
     // After successful payment verification and before sending WhatsApp messages
-    if (user.email) {
-console.log("dhemail111",user.email);
-      await sendInvoiceEmail({
-    to: invoiceData.clientEmail,
-    subject: "Fiddle Fitness Invoice",
-    text: "Please find your invoice attached.",
-    attachmentBuffer: pdfBuffer,
-  });
-      
-      await sendEmailReceipt(razorpayPaymentId, user.email);
+   try {
+  const pdfBuffer = await createInvoicePDF(invoiceData);
 
-
-    }
+  if (user.email) {
+    await sendEmailReceipt(razorpayPaymentId, user.email);
+    await sendInvoiceEmail({
+      to: invoiceData.clientEmail,
+      subject: "Fiddle Fitness Invoice",
+      text: "Please find your invoice attached.",
+      attachmentBuffer: pdfBuffer,
+    });
+  }
+} catch (err) {
+  console.error("Error creating or sending invoice PDF:", err);
+}
 
     // Follow-up message
  //   await sendTextMessage(
