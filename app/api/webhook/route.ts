@@ -75,6 +75,7 @@ enum ConversationState {
   AWAITING_EVENT_SELECTION = 'awaiting_event_selection',
   AWAITING_REGISTRATION_CONFIRMATION = 'awaiting_registration_confirmation',
   AWAITING_REGISTERED_EVENT_SELECTION = 'awaiting_registered_event_selection',
+  AWAITING_EMPTY_CATEGORY_SELECTION = 'awaiting_registered_empty_event_selection',
 }
 
 // Process incoming messages
@@ -205,7 +206,7 @@ Let me know if you still need further assistance!
                   console.log(new Date(user.lastInteraction),'<',fifteenMinutesAgo)
         if (new Date(user.lastInteraction) < fifteenMinutesAgo) {
           console.log('Reset conversation state to IDLE due to inactivity')
-      updateData.conversationState = ConversationState.IDLE
+   //   updateData.conversationState = ConversationState.IDLE
         }
       } else {
         // If no last interaction, ensure we have a conversation state
@@ -264,7 +265,7 @@ Let me know if you still need further assistance!
         // await sendReferralCodeCtaMessage(phoneNumber, '50', user.referralCode)
         await sendWelcomeAboardTemplate(phoneNumber, '50', user.referralCode)
 
-       await handleCategorybeforeSelection(user)
+        await handleCategorybeforeSelection(user)
         return // Exit early as flow responses don't need further processing
       }
     }
@@ -294,6 +295,10 @@ Let me know if you still need further assistance!
 
       case ConversationState.AWAITING_REGISTERED_EVENT_SELECTION:
         await handleRegisteredEventSelection(user, message)
+        break
+
+         case ConversationState.AWAITING_EMPTY_CATEGORY_SELECTION:
+        await handleRegisteredEmptyEventSelection(user, message)
         break
 
       default:
@@ -553,6 +558,8 @@ async function handleRegisteredEventSelection(user: any, message: any) {
       },
     })
 
+console.log("All Events imran",event);
+
     if (!event) {
       await sendTextMessage(
         user.mobileNumber,
@@ -655,6 +662,62 @@ async function handleRegisteredEventSelection(user: any, message: any) {
 
 
 
+/**
+ * Handle user selection of registered event
+ */
+async function handleRegisteredEmptyEventSelection(user: any, message: any) {
+  try {
+    // Extract selected event ID from the interactive message
+    let selectedEventId = null
+
+    if (
+      message.type === 'interactive' &&
+      message.interactive?.type === 'list_reply'
+    ) {
+      selectedEventId = message.interactive.list_reply.id
+    } else if (message.type === 'text') {
+      // Try to find event by ID in text
+      const text = message.text.body.trim()
+
+      // Check if text matches any registered event ID
+      if (user.contextData?.registeredEventIds?.includes(text)) {
+        selectedEventId = text
+      }
+    }
+
+    
+    await sendTextMessage(
+      user.mobileNumber,
+      'Sorry, there are no upcoming events available at the moment. Please check back later!',
+    )
+
+
+
+    // Reset conversation state to idle
+   await prisma.user.update({
+      where: { id: user.id },
+      data: { conversationState: ConversationState.IDLE,interest:selectedEventId },
+    })
+
+
+    
+  } catch (error) {
+    console.error('Error handling registered event selection:', error)
+    await sendTextMessage(
+      user.mobileNumber,
+      'Sorry, I encountered an error while retrieving event details. Please try again later.',
+    )
+
+    // Reset conversation state on error
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { conversationState: ConversationState.IDLE },
+    })
+  }
+}
+
+
+
 async function sendCategoryList(user: any) {
   try {
     // Fetch upcoming events with categories
@@ -669,6 +732,9 @@ async function sendCategoryList(user: any) {
         description: `${category.label} events`,
       })),
     )
+
+
+   
 
     if (upcomingCategories.length === 0) {
       await sendTextMessage(
@@ -685,6 +751,23 @@ async function sendCategoryList(user: any) {
       })
       return
     }
+
+ const dynamicRows = upcomingCategories.map(category => ({
+  id: category.value,
+  title: category.label,
+  description: `Browse upcoming ${category.label} events`,
+}))
+
+
+
+    const customRows = [
+  {
+    id: 'more_option',
+    title: 'More Option',
+    description: 'Are you looking for something more exciting?',
+  }
+]
+    const allRows = [...dynamicRows, ...customRows]
 
     // Prepare interactive list message for WhatsApp
     const listMessage = {
@@ -709,11 +792,7 @@ async function sendCategoryList(user: any) {
           sections: [
             {
               title: 'Available Categories',
-              rows: upcomingCategories.map(category => ({
-                id: category.value,
-                title: category.label,
-                description: `Browse upcoming ${category.label} events`,
-              })),
+              rows: allRows,
             },
           ],
         },
@@ -743,6 +822,109 @@ async function sendCategoryList(user: any) {
     throw error
   }
 }
+
+
+
+async function sendEmptyCategoryList(user: any) {
+  try {
+    // Fetch upcoming events with categories
+      const upcomingCategories = await getUpcomingEmptyEventCategories()
+
+    const categoriesWithoutEvents = upcomingCategories.filter(
+  category => category.hasUpcomingEvent === false
+);
+
+
+    console.log('Upcoming categories:', upcomingCategories)
+    console.log(
+      'Upcoming categories rows:',
+      upcomingCategories.map(category => ({
+        id: category.value,
+        title: category.label,
+        description: `${category.label} events`,
+      })),
+    )
+
+
+   
+
+    if (upcomingCategories.length === 0) {
+      await sendTextMessage(
+        user.mobileNumber,
+        'Sorry, there are no upcoming events available at the moment. Please check back later!',
+      )
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          conversationState: ConversationState.IDLE,
+          // Optionally, clear context data if it's no longer relevant
+          // contextData: {},
+        },
+      })
+      return
+    }
+const dynamicRows = categoriesWithoutEvents.map(category => ({
+  id: category.value,
+  title: category.label,
+  description: `Browse upcoming ${category.label} events`,
+}));
+
+
+
+    // Prepare interactive list message for WhatsApp
+    const listMessage = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: user.mobileNumber,
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        header: {
+          type: 'text',
+          text: 'Level Up Your Health!',
+        },
+        body: {
+          text: 'We  got some more amazing health programs designed to help  your well-being!✨ More Exciting Programs at Fiddle Fitness!',
+        },
+        footer: {
+          text: 'Reply with your selection',
+        },
+        action: {
+          button: 'View Categories',
+          sections: [
+            {
+              title: 'Available Categories',
+              rows: dynamicRows,
+            },
+          ],
+        },
+      },
+    }
+
+    // Send list message via WhatsApp API
+    const response = await axios.post(WHATSAPP_API_URL, listMessage, {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    // Update user state to awaiting category selection
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        conversationState: ConversationState.AWAITING_EMPTY_CATEGORY_SELECTION,
+        lastInteraction: new Date(), // reset the timer
+      },
+    })
+
+    console.log('Empty Category list sent:', response.data)
+  } catch (error) {
+    console.error('Error sending category list:', error)
+    throw error
+  }
+}
+
 
 /**
  * Fetch available event categories and send as interactive list
@@ -838,7 +1020,10 @@ async function handleCategorybeforeSelection(user: any) {
 async function getUpcomingEventCategories() {
   const now = new Date()
 
-  console.log("today date",now);
+
+
+  // Calculate cutoff datetime: event must be at least 72 hours in the future
+  const registrationCutoff = new Date(now.getTime() + 72 * 60 * 60 * 1000)
 
   const upcomingEvents = await prisma.event.findMany({
     where: {
@@ -876,6 +1061,45 @@ async function getUpcomingEventCategories() {
 }
 
 
+
+async function getUpcomingEmptyEventCategories() {
+  const now = new Date();
+
+  const upcomingEvents = await prisma.event.findMany({
+    where: {
+      eventDate: { gt: now },
+      OR: [
+        { registrationDeadline: null },
+        { registrationDeadline: { gt: now } },
+      ],
+    },
+    select: {
+      category: true,
+    },
+  });
+
+  // Extract unique upcoming event categories
+  const upcomingCategorySet = new Set(
+    upcomingEvents.map(event => event.category)
+  );
+
+  // Return all categories with a flag
+  return EVENT_CATEGORIES.map(category => {
+    const categoryKey = category.value;
+
+    const hasUpcomingEvent =
+      upcomingCategorySet.has(categoryKey) ||
+      upcomingCategorySet.has(categoryKey.replace(/^cat_/, '')) ||
+      upcomingCategorySet.has(`cat_${categoryKey}`);
+
+    return {
+      ...category,
+      hasUpcomingEvent,
+    };
+  });
+}
+
+
 /**
  * Handle category selection response from user
  */
@@ -906,13 +1130,28 @@ async function handleCategorySelection(user: any, message: any) {
       }
     }
 
+
+  if(selectedCategory == "more_option"){
+
+  await sendEmptyCategoryList(user);
+  return
+
+      }
+
+
+
     if (!selectedCategory) {
       // If category not recognized, ask again
-      await sendTextMessage(
+
+await sendTextMessage(
         user.mobileNumber,
         "Sorry, I couldn't understand your selection. Please choose from the list of categories.",
       )
       await sendCategoryList(user)
+
+
+    
+      
       return
     }
 
@@ -956,11 +1195,15 @@ async function handleCategorySelection(user: any, message: any) {
  */
 async function getUpcomingEventsByCategory(category: string) {
   const now = new Date()
+
+  // Calculate cutoff datetime: event must be at least 72 hours in the future
+  const registrationCutoff = new Date(now.getTime() + 72 * 60 * 60 * 1000)
+  console.log("reg date",registrationCutoff)
   return prisma.event.findMany({
     where: {
       category,
       eventDate: {
-        gt: now,
+      gte: now,
       },
       OR: [
         { registrationDeadline: null },
@@ -1422,16 +1665,14 @@ async function sendFlowTemplate(
 ) {
   try {
 
-     await sendTextMessage(
-     recipient,
-      `Hi there! Welcome to Fiddle Fitness. We're equally excited & ready to help.`,
-    )
+  
+ //await sendWelcomeMessageTemplate(recipient, 'https://traderscontent.livetraders.com/galary/875199.jpeg');
 
-
-     await sendTextMessage(
-      recipient,
-      `Let’s get started by knowing you. Please fill out a brief form to proceed. `,
-   )
+ await sendImageAndText(
+  recipient,
+  'https://www.digitalharvest.in/img/fit.jpeg',
+  'Hi there! Welcome to Fiddle Fitness. We are equally excited & ready to help.'
+);
 
     console.log(`Sending flow template "${templateName}" to ${recipient}...`)
 
@@ -1552,13 +1793,66 @@ async function handleButtonResponse(user: any, message: any) {
     }else if (buttonId === 'skip_event') {
       await sendTextMessage(
         user.mobileNumber,
-        'Thanks for lettin us know. Prioritize your health, and well have more sessions soon!',
+        'Thanks for letting us know. Prioritize your health, and well have more sessions soon!',
       )
     }
     return true // Indicate that we handled the button
   }
   return false // Not a button response
 }
+
+
+
+
+export async function sendImageAndText(phoneNumber: string, imageUrl: string, message: string) {
+  try {
+    console.log("Sending image...");
+
+    // 1️⃣ Send Image First
+    await axios({
+      method: 'POST',
+      url: WHATSAPP_API_URL,
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        messaging_product: 'whatsapp',
+        to: phoneNumber,
+        type: 'image',
+        image: {
+          link: imageUrl,
+        },
+      },
+    });
+
+    console.log("Image sent. Sending text...");
+
+    // 2️⃣ Then Send Text Message
+    await axios({
+      method: 'POST',
+      url: WHATSAPP_API_URL,
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        messaging_product: 'whatsapp',
+        to: phoneNumber,
+        type: 'text',
+        text: {
+          body: message,
+        },
+      },
+    });
+
+    console.log("Text message sent!");
+  } catch (error) {
+    console.error('Error sending image/text message:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
 
 // Webhook verification for WhatsApp
 export async function GET(req: NextRequest) {
