@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 export async function createInvoicePDF({
@@ -51,18 +53,24 @@ export async function createInvoicePDF({
     borderWidth: 1,
   });
  // Fetch logo from public folder
-const logoUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/logo.png`;
-const logoRes = await fetch(logoUrl);
-const logoBuffer = await logoRes.arrayBuffer();
-const logoImage = await pdfDoc.embedPng(logoBuffer);
+ // ✅ Correct way to load the logo from /public
+  const logoPath = path.join(process.cwd(), 'public', 'logo.png');
 
 // Draw logo at top-left
-page.drawImage(logoImage, {
-  x: 50,
-  y: height - 80,
-  width: 100,
-  height: 30,
-});
+ try {
+    const logoBuffer = fs.readFileSync(logoPath);
+    const logoImage = await pdfDoc.embedPng(logoBuffer);
+
+    // Draw the image at the top-left
+    page.drawImage(logoImage, {
+      x: 50,
+      y: height - 80,
+      width: 100,
+      height: 30,
+    });
+  } catch (error) {
+    console.error("Error embedding logo image:", error);
+  }
 
 
   // Company info (top-right)
