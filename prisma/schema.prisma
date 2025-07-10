@@ -16,6 +16,7 @@ model User {
   city         String?
   gender       String?
   mobileNumber String   @unique
+  interest           String?  
   yearOfBirth  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
