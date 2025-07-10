@@ -50,13 +50,13 @@ export async function createInvoicePDF({
   for (const item of items) {
     drawText(item.description, 50, y);
     drawText(item.quantity.toString(), 250, y);
-    drawText(`₹${(item.price * item.quantity).toFixed(2)}`, 350, y);
+    drawText(`${(item.price * item.quantity).toFixed(2)}`, 350, y);
     total += item.price * item.quantity;
     y -= 15;
   }
 
   y -= 15;
-  drawText(`Total: ₹${total.toFixed(2)}`, 50, y);
+  drawText(`Total: ${total.toFixed(2)}`, 50, y);
   y -= 25;
 
   drawText("Thank you for your purchase!", 50, y);
