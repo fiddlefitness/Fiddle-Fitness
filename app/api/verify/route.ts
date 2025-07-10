@@ -413,17 +413,20 @@ export async function POST(request: NextRequest) {
 
   const pdfBuffer = await createInvoicePDF(invoiceData);
 
-
+console.log("dhemail",user.email);
     // After successful payment verification and before sending WhatsApp messages
     if (user.email) {
-      await sendEmailReceipt(razorpayPaymentId, user.email);
-
-await sendInvoiceEmail({
+console.log("dhemail111",user.email);
+      await sendInvoiceEmail({
     to: invoiceData.clientEmail,
     subject: "Fiddle Fitness Invoice",
     text: "Please find your invoice attached.",
     attachmentBuffer: pdfBuffer,
   });
+      
+      await sendEmailReceipt(razorpayPaymentId, user.email);
+
+
     }
 
     // Follow-up message
