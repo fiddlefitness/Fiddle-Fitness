@@ -396,7 +396,7 @@ export async function POST(request: NextRequest) {
     )
 
 
-      const invoiceData = {
+   const invoiceData = {
     invoiceNumber: razorpayPaymentId,
     date: new Date().toLocaleDateString(),
     clientName: user.name,
@@ -412,6 +412,7 @@ export async function POST(request: NextRequest) {
   };
 
   const pdfBuffer = await createInvoicePDF(invoiceData);
+
 
     // After successful payment verification and before sending WhatsApp messages
     if (user.email) {
