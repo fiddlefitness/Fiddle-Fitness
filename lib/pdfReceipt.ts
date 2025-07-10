@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 
 export async function createInvoicePDF({
   invoiceNumber,
@@ -6,7 +6,7 @@ export async function createInvoicePDF({
   clientName,
   clientEmail,
   clientPhone,
-  items
+  items,
 }: {
   invoiceNumber: string;
   date: string;
@@ -30,13 +30,13 @@ export async function createInvoicePDF({
   // Header
   drawText("Fiddle Fitness Invoice", 50, y);
   y -= 25;
-  drawText(Invoice #: ${invoiceNumber}, 50, y);
-  drawText(Date: ${date}, 400, y);
+  drawText(`Invoice #: ${invoiceNumber}`, 50, y);
+  drawText(`Date: ${date}`, 400, y);
   y -= 20;
-  drawText(Client: ${clientName}, 50, y);
+  drawText(`Client: ${clientName}`, 50, y);
   y -= 15;
-  drawText(Email: ${clientEmail}, 50, y);
-  drawText(Phone: ${clientPhone}, 400, y);
+  drawText(`Email: ${clientEmail}`, 50, y);
+  drawText(`Phone: ${clientPhone}`, 400, y);
   y -= 30;
 
   // Table Headers
@@ -50,13 +50,13 @@ export async function createInvoicePDF({
   for (const item of items) {
     drawText(item.description, 50, y);
     drawText(item.quantity.toString(), 250, y);
-    drawText(₹${item.price.toFixed(2)}, 350, y);
+    drawText(`₹${(item.price * item.quantity).toFixed(2)}`, 350, y);
     total += item.price * item.quantity;
     y -= 15;
   }
 
   y -= 15;
-  drawText(Total: ₹${total.toFixed(2)}, 50, y);
+  drawText(`Total: ₹${total.toFixed(2)}`, 50, y);
   y -= 25;
 
   drawText("Thank you for your purchase!", 50, y);
