@@ -16,7 +16,7 @@ export async function sendInvoiceEmail({
    service: 'gmail',
     auth: {
  user: "imranmohamed46@gmail.com",
-        pass: "wpyackygkpcxqqgt",
+        pass: "ygobbcdxvtkkyfdu",
     },
   });
 
