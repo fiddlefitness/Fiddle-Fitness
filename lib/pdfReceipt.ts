@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 export async function createInvoicePDF({
   invoiceNumber,
@@ -16,50 +16,123 @@ export async function createInvoicePDF({
   items: { description: string; quantity: number; price: number }[];
 }): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595.28, 841.89]); // A4 size in points
+  const page = pdfDoc.addPage([595.28, 841.89]); // A4 size
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const { width, height } = page.getSize();
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const { height, width } = page.getSize();
   const fontSize = 12;
   let y = height - 50;
 
-  const drawText = (text: string, x: number, y: number) => {
-    page.drawText(text, { x, y, size: fontSize, font });
+  const drawText = (
+    text: string,
+    x: number,
+    y: number,
+    opts: { bold?: boolean; size?: number } = {}
+  ) => {
+    page.drawText(text, {
+      x,
+      y,
+      size: opts.size || fontSize,
+      font: opts.bold ? boldFont : font,
+      color: rgb(0, 0, 0),
+    });
   };
 
-  // Header
-  drawText("Fiddle Fitness Invoice", 50, y);
-  y -= 25;
+  // Dummy logo rectangle (replace later with an image if needed)
+  page.drawRectangle({
+    x: 50,
+    y: y - 30,
+    width: 100,
+    height: 30,
+    color: rgb(0.9, 0.9, 0.9),
+    borderColor: rgb(0.5, 0.5, 0.5),
+    borderWidth: 1,
+  });
+ // Fetch logo from public folder
+const logoUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/logo.png`;
+const logoRes = await fetch(logoUrl);
+const logoBuffer = await logoRes.arrayBuffer();
+const logoImage = await pdfDoc.embedPng(logoBuffer);
+
+// Draw logo at top-left
+page.drawImage(logoImage, {
+  x: 50,
+  y: height - 80,
+  width: 100,
+  height: 30,
+});
+
+
+  // Company info (top-right)
+  drawText("Fiddle Fitness Pvt Ltd", width - 200, y, { bold: true });
+  drawText("123 Health Street", width - 200, y - 15);
+  drawText("Wellness City, Fitland 456789", width - 200, y - 30);
+  y -= 60;
+
+  // Invoice info
   drawText(`Invoice #: ${invoiceNumber}`, 50, y);
-  drawText(`Date: ${date}`, 400, y);
-  y -= 20;
+  drawText(`Date: ${date}`, width - 200, y);
+  y -= 25;
+
+  // Client info
   drawText(`Client: ${clientName}`, 50, y);
   y -= 15;
   drawText(`Email: ${clientEmail}`, 50, y);
-  drawText(`Phone: ${clientPhone}`, 400, y);
-  y -= 30;
+  drawText(`Phone: ${clientPhone}`, width - 200, y);
+  y -= 25;
+
+  // Line separator
+  page.drawLine({
+    start: { x: 50, y },
+    end: { x: width - 50, y },
+    thickness: 1,
+    color: rgb(0.8, 0.8, 0.8),
+  });
+  y -= 20;
 
   // Table Headers
-  drawText("Event", 50, y);
-  drawText("Qty", 250, y);
-  drawText("Amount", 350, y);
+  drawText("Event", 50, y, { bold: true });
+  drawText("Qty", 250, y, { bold: true });
+  drawText("Amount", 400, y, { bold: true });
   y -= 15;
 
-  // Table Rows
+  // Line under headers
+  page.drawLine({
+    start: { x: 50, y },
+    end: { x: width - 50, y },
+    thickness: 0.5,
+    color: rgb(0.6, 0.6, 0.6),
+  });
+  y -= 15;
+
   let total = 0;
   for (const item of items) {
     drawText(item.description, 50, y);
     drawText(item.quantity.toString(), 250, y);
-    drawText(`${(item.price * item.quantity).toFixed(2)}`, 350, y);
+    drawText(`INR ${(item.price * item.quantity).toFixed(2)}`, 400, y);
     total += item.price * item.quantity;
     y -= 15;
   }
 
-  y -= 15;
-  drawText(`Total: ${total.toFixed(2)}`, 50, y);
-  y -= 25;
+  y -= 20;
+  page.drawLine({
+    start: { x: 50, y },
+    end: { x: width - 50, y },
+    thickness: 0.5,
+    color: rgb(0.6, 0.6, 0.6),
+  });
+  y -= 20;
 
-  drawText("Thank you for your purchase!", 50, y);
+  drawText(`Total: INR ${total.toFixed(2)}`, 50, y, { bold: true });
+
+  y -= 40;
+  drawText("Thank you for your purchase!", 50, y, { italic: true });
+
+  // Footer
+  drawText("Fiddle Fitness • Stay Fit, Stay Healthy", 50, 40, { size: 10 });
+  drawText("Page 1 of 1", width - 100, 40, { size: 10 });
 
   const pdfBytes = await pdfDoc.save();
   return Buffer.from(pdfBytes);
