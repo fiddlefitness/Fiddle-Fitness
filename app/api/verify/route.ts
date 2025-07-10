@@ -384,11 +384,11 @@ export async function POST(request: NextRequest) {
     }).format(amountPaid / 100)
 
     // Send confirmation message via WhatsApp
-    let confirmationMessage = `This confirms receipt of your payment forr *${event.title}*.`;
+    let confirmationMessage = `This confirms receipt of your payment for *${event.title}*.`;
     if (actualCoinsToDeduct > 0) {
         confirmationMessage += ` You used ${actualCoinsToDeduct} Fiddle Fitness Coins for a discount of ₹${actualCoinsToDeduct.toFixed(2)}.`;
     }
-      confirmationMessage += ` Youra official payment receipt will be sent to your email address. Event details will be shared 24-48 hrs prior to the scheduled date & time.`;
+      confirmationMessage += ` Your official payment receipt will be sent to your email address. Event details will be shared 24-48 hrs prior to the scheduled date & time.`;
     
     await sendTextMessage(
       user.mobileNumber,
