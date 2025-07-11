@@ -185,15 +185,25 @@ if (['1', '2', '3', '4', '5'].includes(lowerText)) {
     let  user1 = result1.rows[0];
 
 if(user1.id){
-
-  await prisma.eventRegistration.updateMany({
+  const latestRegistration = await prisma.eventRegistration.findFirst({
   where: {
-    user1.id, // e.g., "user_abc123"
+    userId: user1.id,
   },
-  data: {
-    rating: rating, // or your dynamic rating value
+  orderBy: {
+    createdAt: 'desc', // or updatedAt, or eventDate — depends on your schema
   },
 });
+
+ if (latestRegistration) {
+  await prisma.eventRegistration.update({
+    where: {
+      id: latestRegistration.id,
+    },
+    data: {
+      rating: rating, // your new rating value
+    },
+  });
+}
   
 }
   // TODO: Save rating to DB or analytics here if needed
