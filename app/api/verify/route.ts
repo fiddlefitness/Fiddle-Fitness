@@ -419,7 +419,7 @@ console.log("dhemail",user.email);
   const pdfBuffer = await createInvoicePDF(invoiceData);
 
   if (user.email) {
-    await sendEmailReceipt(razorpayPaymentId, user.email);
+  //  await sendEmailReceipt(razorpayPaymentId, user.email);
     await sendInvoiceEmail({
       to: invoiceData.clientEmail,
       subject: "Fiddle Fitness Invoice",
