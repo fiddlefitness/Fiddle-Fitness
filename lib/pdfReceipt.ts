@@ -61,13 +61,14 @@ export async function createInvoicePDF({
     const logoBuffer = fs.readFileSync(logoPath);
     const logoImage = await pdfDoc.embedPng(logoBuffer);
 const logoDims = logoImage.scale(0.25); // scales to 25% of original
+     const topY = height - 50;
     // Draw the image at the top-left
-    page.drawImage(logoImage, {
-  x: 50,
-  y: height - 80,
-  width: logoDims.width,
-  height: logoDims.height,
-});
+  page.drawImage(logoImage, {
+    x: 50,
+    y: topY - logoDims.height,
+    width: logoDims.width,
+    height: logoDims.height,
+  });
   } catch (error) {
     console.error("Error embedding logo image:", error);
   }
