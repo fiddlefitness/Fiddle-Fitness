@@ -66,7 +66,7 @@ export async function createInvoicePDF({
       x: 50,
       y: height - 80,
       width: 100,
-      height: 30,
+      height: 100,
     });
   } catch (error) {
     console.error("Error embedding logo image:", error);
