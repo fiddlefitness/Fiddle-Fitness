@@ -75,9 +75,9 @@ const logoDims = logoImage.scale(0.25); // scales to 25% of original
 
 
   // Company info (top-right)
-  drawText("Fiddle Fitness Pvt Ltd", width - 200, y, { bold: true });
-  drawText("123 Health Street", width - 200, y - 15);
-  drawText("Wellness City, Fitland 456789", width - 200, y - 30);
+  drawText("Fiddle Fitness", width - 200, y, { bold: true });
+  drawText(" # B210, Tricolour Palm Cove, ", width - 200, y - 15);
+  drawText("Shanthi Nagar, Uppal, Hyderbad - 500039", width - 200, y - 30);
   y -= 60;
 
   // Invoice info
