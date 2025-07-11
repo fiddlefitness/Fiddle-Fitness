@@ -43,15 +43,12 @@ export async function createInvoicePDF({
   };
 
   // Dummy logo rectangle (replace later with an image if needed)
-  page.drawRectangle({
-    x: 50,
-    y: y - 30,
-    width: 100,
-    height: 30,
-    color: rgb(0.9, 0.9, 0.9),
-    borderColor: rgb(0.5, 0.5, 0.5),
-    borderWidth: 1,
-  });
+page.drawImage(logoImage, {
+  x: 50,
+  y: height - 20,
+  width: 100,
+  height: 80,
+});
  // Fetch logo from public folder
  // ✅ Correct way to load the logo from /public
   const logoPath = path.join(process.cwd(), 'public', 'logo.png');
@@ -75,9 +72,11 @@ const logoDims = logoImage.scale(0.25); // scales to 25% of original
 
 
   // Company info (top-right)
-  drawText("Fiddle Fitness", width - 200, y, { bold: true });
-  drawText(" # B210, Tricolour Palm Cove, ", width - 200, y - 15);
-  drawText("Shanthi Nagar, Uppal, Hyderbad - 500039", width - 200, y - 30);
+drawText("Fiddle Fitness", width - 200, y, { bold: true });
+drawText("# B210, Tricolour Palm Cove", width - 200, y - 15);
+drawText("Shanthi Nagar, Uppal", width - 200, y - 30);
+drawText("Hyderabad", width - 200, y - 45);
+drawText("Telangana - 500039", width - 200, y - 60);
   y -= 60;
 
   // Invoice info
