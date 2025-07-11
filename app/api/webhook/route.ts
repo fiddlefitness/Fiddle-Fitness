@@ -151,8 +151,9 @@ async function handleIncomingMessage(
 
 
 const text = message.type === 'text' && message.text?.body?.trim();
-
-if (text && text.toLowerCase() === 'get help') {
+if (text) {
+   const lowerText = text.toLowerCase();
+if (lowerText === 'get help') {
   // 1️⃣ Send a simple text reply
  await sendTextMessage(phoneNumber, `
 *Check the following before reaching out for help:*
@@ -169,6 +170,37 @@ Let me know if you still need further assistance!
 `);
 
   return ;
+}
+
+
+
+// 📌 Rating trigger (1 to 5)
+if (['1', '2', '3', '4', '5'].includes(lowerText)) {
+  const rating = parseInt(lowerText, 10);
+
+      const result1= await pool.query(
+    'SELECT * FROM "User" WHERE "mobileNumber" = $1 LIMIT 1',
+    [phoneNumber]
+    );
+    let  user1 = result1.rows[0];
+
+if(user1.id){
+
+  await prisma.eventRegistration.updateMany({
+  where: {
+    user1.id, // e.g., "user_abc123"
+  },
+  data: {
+    rating: rating, // or your dynamic rating value
+  },
+});
+  
+}
+  // TODO: Save rating to DB or analytics here if needed
+
+  
+  return;
+}
 }
 
 
@@ -206,7 +238,7 @@ Let me know if you still need further assistance!
                   console.log(new Date(user.lastInteraction),'<',fifteenMinutesAgo)
         if (new Date(user.lastInteraction) < fifteenMinutesAgo) {
           console.log('Reset conversation state to IDLE due to inactivity')
-      updateData.conversationState = ConversationState.IDLE
+   //   updateData.conversationState = ConversationState.IDLE
         }
       } else {
         // If no last interaction, ensure we have a conversation state
@@ -947,13 +979,13 @@ async function handleCategorybeforeSelection(user: any) {
 
     await sendTextMessage(
       user.mobileNumber,
-      `Thanks ${user.name} 👋, we now know you well. "Thrilled you're here!`,
+      `Thanks ${user.name} 👋, We're thrilled to have you on board`,
     )
 
 
       await sendTextMessage(
       user.mobileNumber,
-      `Your well-being is important,  please consider any health conditions before engaging in physical activity.`,
+      `Please take a moment to consider any existing health conditions before beginning exercise. Your safety is our top priority.`,
     )
 
   const listMessage = {
@@ -1232,11 +1264,51 @@ async function sendEventsList(
     )
     const categoryLabel = categoryInfo ? categoryInfo.label : categoryName
 
+if (categoryLabel === "Zumba") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for choosing *Zumba*! 💃\n\nIt’s a fun-packed workout that energizes your heart, torches calories, and enhances coordination—all while you dance to the beat!`
+  );
 
-     await sendTextMessage(
-     phoneNumber,
-     `Thanks for your selection! ${categoryLabel} 👋,   boosts cardiovascular health, burns calories, and improves coordination through fun, dance-based exercise.`,
-   )
+} else if (categoryLabel === "Dance Fitness") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for dancing with us! 💃🕺\n\n*Dance Fitness* is a full-body cardio blast that keeps your heart happy, energy high, and smile wide—one beat at a time.`
+  );
+
+} else if (categoryLabel === "Tabata HIIT") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for selecting *Tabata HIIT*! 🔥\n\nThis high-intensity workout pushes your limits, builds endurance, and burns fat fast—all in just a few powerful minutes.`
+  );
+
+} else if (categoryLabel === "Strength Training") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for picking *Strength Training*! 🏋️‍♂️\n\nIt helps build lean muscle, improves posture, and boosts metabolism—empowering your body with every rep.`
+  );
+
+} else if (categoryLabel === "Yoga") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for choosing *Yoga*! 🧘‍♀️\n\nThis mindful movement improves flexibility, balance, and inner calm—helping you feel centred and strong from the inside out.`
+  );
+
+} else if (categoryLabel === "Diet Consultation") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for opting for *Diet Consultation*! 🥗\n\nGet personalized guidance to eat right, stay energized, and align your meals with your fitness goals.`
+  );
+
+} else {
+  // Fallback if label isn't recognized
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for choosing *${categoryLabel}*! Let's get started!`
+  );
+}
+
+   
 
 
    await sendTextMessage(
