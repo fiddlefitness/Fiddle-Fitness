@@ -43,15 +43,7 @@ export async function createInvoicePDF({
   };
 
 
-   page.drawRectangle({
-    x: 50,
-    y: y - 30,
-    width: 100,
-    height: 30,
-    color: rgb(0.9, 0.9, 0.9),
-    borderColor: rgb(0.5, 0.5, 0.5),
-    borderWidth: 1,
-  });
+
 
 
  // Fetch logo from public folder
@@ -61,16 +53,22 @@ export async function createInvoicePDF({
 // Draw logo at top-left
  try {
     const logoBuffer = fs.readFileSync(logoPath);
-    const logoImage = await pdfDoc.embedPng(logoBuffer);
-const logoDims = logoImage.scale(0.25); // scales to 25% of original
-     const topY = height - 50;
-    // Draw the image at the top-left
+  const logoImage = await pdfDoc.embedPng(logoBuffer);
+
+  const logoDims = logoImage.scaleToFit(Number.MAX_SAFE_INTEGER, 80); // Set height to 80
+  const logoX = 50;
+  const logoY = height - 80;
+
+  // Draw logo
   page.drawImage(logoImage, {
-     x: 50,
-  y: height - 20,
-  width: 100,
-  height: 80,
+    x: logoX,
+    y: logoY,
+    width: logoDims.width,
+    height: logoDims.height,
   });
+
+  // Reset `y` after logo height
+  y = logoY - 20; // drop y below logo for further content
   } catch (error) {
     console.error("Error embedding logo image:", error);
   }
@@ -82,7 +80,7 @@ drawText("# B210, Tricolour Palm Cove", width - 200, y - 15);
 drawText("Shanthi Nagar, Uppal", width - 200, y - 30);
 drawText("Hyderabad", width - 200, y - 45);
 drawText("Telangana - 500039", width - 200, y - 60);
-  y -= 60;
+y -= 80; // ✅ Push y down enough before invoice section
 
   // Invoice info
   drawText(`Invoice #: ${invoiceNumber}`, 50, y);
