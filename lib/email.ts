@@ -31,7 +31,7 @@ const transporter = nodemailer.createTransport({
   });
 
   await transporter.sendMail({
-     from: `"Fiddle Fitness" <afraa@2gmil.com>`,
+     from: `"Fiddle Fitness" <info@fiddle.fitness>`,
     to,
     subject,
     text,
