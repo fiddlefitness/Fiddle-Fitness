@@ -521,29 +521,32 @@ async function processEventReminders(event: any, type: '60min' | '24hr' | '48hr'
       
       const meetLink = poolAttendee?.meetLink || poolWithLinks.meetLink;
       
-      if (meetLink && registration.user.mobileNumber) {
+     if (meetLink && registration.user.mobileNumber) {
             if (type === '60min') {
            await sendTextMessage(registration.user.mobileNumber,`
-         Check the following , before reaching out for help - 
-1- Check Internet: Is your Wi-Fi or data connection stable?
-2- Verify Link: Are you using the correct Zoom meeting link?
-3- Zoom App: Is the Zoom app installed and up-to-date?
-4- Email Match: Are you logged into the Zoom app with the email you used for registration (if required)?
-5- Password: If prompted, is your Zoom account password correct?
-6- Restart: Try closing and reopening the Zoom app.
-7- Device Restart: If still stuck, try restarting your device.
+  Before You Reach Out for Help, Quick Checks First:
+1.	Internet: Make sure your Wi-Fi or data is stable.
+2.	Zoom Link: Double-check you’re using the correct meeting link.
+3.	App Status: Ensure Zoom is installed and updated.
+4.	Email Login: Use the same email you registered with.
+5.	Password: Enter the correct Zoom password if prompted.
+6.	App Restart: Close and reopen Zoom.
+7.	Device Restart: Still stuck? Restart your device.
 
-Still need help ? Click " Get Help"
-            `);
+Still need help ? Click " Get Help"`);
         } else if (type === '24hr') {
         await sendTextMessage(registration.user.mobileNumber,`
-           To ensure a smooth experience for ${event.title}:
-1- Check your internet connection ( 30 Mbps or more ) and Zoom app logged in with the email given during registration. 
-2- Device: Smart TV or Laptop preferred (mobile as last option).
-3- Audio: Connect to external speakers/headphones for better sound.
-4- Have your workout space and water ready.
-5- Wear comfortable workout attire.
-            `);
+          Get Ready for Your Session – Quick Check!
+Here's how to ensure you're all set to go:
+•	Strong Wi-Fi: Aim for 30 Mbps+ for smooth streaming.
+•	Zoom Login: Use your registered email to access the session.
+•	Screen Choice: Smart TV or laptop works best (mobile if needed).
+•	Crisp Audio: Plug in your speakers or headphones for clear sound.
+•	Clear Space: Make room to move freely and keep water nearby.
+•	Comfy Gear: Dress to move, stretch, and sweat with ease! 
+
+Let's make this session awesome!
+`);
         } else if (type === '48hr') {
           await sendUserReminder2Template(
            registration.user.mobileNumber,
@@ -586,7 +589,7 @@ Still need help ? Click " Get Help"
       const trainer = eventTrainer.trainer;
       
       // For trainers, we'll use the pool's main link
-      if (poolWithLinks.meetLink && trainer.mobileNumber) {
+        if (poolWithLinks.meetLink && trainer.mobileNumber) {
            if (type === '60min') {
        await sendTextMessage(trainer.mobileNumber,`
          Check the following , before reaching out for help - 
@@ -602,16 +605,16 @@ Still need help ? Click " Get Help"
             `);
         } else if (type === '24hr') {
                    await sendTextMessage(trainer.mobileNumber,`
-            Hi ${trainer.name}, A friendly reminder - 
-1- Test Your Tech: Check audio, video, and internet connection beforehand.
-2- Music Ready: Ensure your Zumba playlist is prepared and shareable (if needed).
-3- Clear Space: Have enough room to move freely on camera.
-4- Good Lighting: Position yourself where you're well-lit.
-5- Engage Participants: Be energetic, clear with cues, and encourage interaction.
-6- Water Handy: Keep water accessible to stay hydrated.
-7 Start On Time: Log in a few minutes early.
-8 - Technical Backup: Have a plan B if technical issues arise.
-9- Fun Attitude: Bring your energy and enthusiasm!
+            Hi ${trainer.name}, quick reminder before your session 
+1.	Test your tech – Audio, video, and Wi-Fi.
+2.	Playlist ready? – Keep it set and shareable.
+3.	Clear your space – Room to move freely.
+4.	Light it up – Make sure you’re well-lit.
+5.	Stay engaging – Use clear cues and keep it fun.
+6.	Keep water nearby – Stay hydrated.
+7.	Be early – Log in a few mins before.
+8.	Have a backup plan – Just in case tech glitches.
+9.	Bring the vibe! – Energy and smiles all the way!
             `);
         } else if (type === '48hr') {
            await sendTrainerReminder2Template(
