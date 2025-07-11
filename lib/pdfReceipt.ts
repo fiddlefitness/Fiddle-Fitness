@@ -64,9 +64,9 @@ export async function createInvoicePDF({
     // Draw the image at the top-left
     page.drawImage(logoImage, {
       x: 50,
-      y: height - 80,
-      width: 100,
-      height: 100,
+       y: height - 50,
+      width: 70,
+      height: 70,
     });
   } catch (error) {
     console.error("Error embedding logo image:", error);
