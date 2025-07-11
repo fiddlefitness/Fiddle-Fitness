@@ -42,17 +42,18 @@ export async function createInvoicePDF({
     });
   };
 
-   const logoBuffer = fs.readFileSync(logoPath);
-    const logoImage = await pdfDoc.embedPng(logoBuffer);
-const logoDims = logoImage.scale(0.25); // scales to 25% of original
-     const topY = height - 50;
-  // Dummy logo rectangle (replace later with an image if needed)
-page.drawImage(logoImage, {
-  x: 50,
-  y: height - 20,
-  width: 100,
-  height: 80,
-});
+
+   page.drawRectangle({
+    x: 50,
+    y: y - 30,
+    width: 100,
+    height: 30,
+    color: rgb(0.9, 0.9, 0.9),
+    borderColor: rgb(0.5, 0.5, 0.5),
+    borderWidth: 1,
+  });
+
+
  // Fetch logo from public folder
  // ✅ Correct way to load the logo from /public
   const logoPath = path.join(process.cwd(), 'public', 'logo.png');
@@ -65,10 +66,10 @@ const logoDims = logoImage.scale(0.25); // scales to 25% of original
      const topY = height - 50;
     // Draw the image at the top-left
   page.drawImage(logoImage, {
-    x: 50,
-    y: topY - logoDims.height,
-    width: logoDims.width,
-    height: logoDims.height,
+     x: 50,
+  y: height - 20,
+  width: 100,
+  height: 80,
   });
   } catch (error) {
     console.error("Error embedding logo image:", error);
