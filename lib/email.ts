@@ -12,7 +12,7 @@ export async function sendInvoiceEmail({
   text: string;
   attachmentBuffer: Buffer;
 }) {
-  const transporter = nodemailer.createTransport({
+  const transporter1 = nodemailer.createTransport({
    service: 'gmail',
     auth: {
  user: "imranmohamed46@gmail.com",
@@ -20,7 +20,15 @@ export async function sendInvoiceEmail({
     },
   });
 
-
+const transporter = nodemailer.createTransport({
+    host: 'smtpout.secureserver.net',
+    port: 465,
+    secure: true, // true for 465, false for 587
+    auth: {
+      user: 'info@fiddle.fitness',      // Your GoDaddy email
+      pass: '@1987',                    // Your GoDaddy email password
+    },
+  });
 
   await transporter.sendMail({
      from: `"Fiddle Fitness" <afraa@2gmil.com>`,
