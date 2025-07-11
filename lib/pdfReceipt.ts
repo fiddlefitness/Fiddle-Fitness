@@ -42,6 +42,10 @@ export async function createInvoicePDF({
     });
   };
 
+   const logoBuffer = fs.readFileSync(logoPath);
+    const logoImage = await pdfDoc.embedPng(logoBuffer);
+const logoDims = logoImage.scale(0.25); // scales to 25% of original
+     const topY = height - 50;
   // Dummy logo rectangle (replace later with an image if needed)
 page.drawImage(logoImage, {
   x: 50,
