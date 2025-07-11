@@ -26,7 +26,7 @@ const transporter = nodemailer.createTransport({
     secure: true, // true for 465, false for 587
     auth: {
       user: 'info@fiddle.fitness',      // Your GoDaddy email
-      pass: '@1987',                    // Your GoDaddy email password
+      pass: '12March@1987',                    // Your GoDaddy email password
     },
   });
 
