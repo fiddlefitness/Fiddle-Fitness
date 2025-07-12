@@ -6,7 +6,7 @@ export async function POST() {
     invoiceNumber: "INV-2025-001",
     date: new Date().toLocaleDateString(),
     clientName: "John Doe",
-    clientEmail: "sudeept0512@gmail.com",
+    clientEmail: "hemantkanojia7@gmail.com",
     clientPhone: "9994183275",
     items: [
       {
