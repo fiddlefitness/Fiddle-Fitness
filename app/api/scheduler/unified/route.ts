@@ -78,12 +78,11 @@ twoDaysLaterEnd.setHours(23, 59, 59, 999);
     const tomorrowEnd = new Date(tomorrow);
     tomorrowEnd.setHours(23, 59, 59, 999);
 const seventyTwoHoursLater = new Date(today.getTime() + 72 * 60 * 60 * 1000);
-
+const now = new Date();
     const eventsForTomorrow = await prisma.event.findMany({
       where: {
-       eventDate: {
-     gte: seventyTwoHoursLater,
-      lt: new Date(seventyTwoHoursLater.getTime() + 60 * 60 * 1000),
+     registrationDeadline: {
+  lt: now, // deadline is before now
 },
         poolsAssigned: false
       },
@@ -268,16 +267,18 @@ fortyEightHoursLaterStart.setMinutes(0, 0, 0); // Optional cleanup
 // End of that day (24 hours window after 48h point)
 const fortyEightHoursLaterEnd = new Date(fortyEightHoursLaterStart);
 fortyEightHoursLaterEnd.setHours(23, 59, 59, 999);
-
+      
+const yesterday = new Date(today);
+yesterday.setDate(today.getDate() - 1);
 
     
     // Find events happening today with assigned pools
     const todayEvents = await prisma.event.findMany({
       where: {
-        eventDate: {
-        gte: fortyEightHoursLaterStart,
-      lte: fortyEightHoursLaterEnd,
-        },
+          registrationDeadline: {
+      gte: yesterday,
+      lt: today, // deadline was yesterday
+    },
         poolsAssigned: true,
          OR: [
       { reminder60Sent: false },
