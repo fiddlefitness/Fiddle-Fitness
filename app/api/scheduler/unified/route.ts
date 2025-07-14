@@ -243,9 +243,20 @@ async function handleSendReminders(runType: string) {
 
     const now = new Date();
 
+      const today = new Date();
+today.setHours(0, 0, 0, 0);
+
+const yesterday = new Date(today);
+yesterday.setDate(today.getDate() - 1);
+
     // Fetch all upcoming or just-passed events that still need reminders
     const eventsToRemind = await prisma.event.findMany({
+        
       where: {
+             registrationDeadline: {
+          gte: yesterday,
+          lt: today,
+        },
         poolsAssigned: true,
         OR: [
           { reminder60Sent: false },
