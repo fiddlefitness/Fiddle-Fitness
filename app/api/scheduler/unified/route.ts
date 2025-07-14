@@ -254,7 +254,6 @@ async function handleSendReminders(runType: string) {
           { ratingSent: false }
         ]
       },
-        take: 3, // 👈 process only 3 events
       include: {
         registrations: {
           include: {
