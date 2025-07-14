@@ -240,54 +240,19 @@ const now = new Date();
 async function handleSendReminders(runType: string) {
   try {
     console.log(`[${new Date().toISOString()}] Starting send reminders task (${runType})`);
-    
-    // Get today's date range
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const todayEnd = new Date(today);
-    todayEnd.setHours(23, 59, 59, 999);
-    
 
-// Calculate 48 hours ahead (start of day)
-const twoDaysLater = new Date(today);
-twoDaysLater.setDate(twoDaysLater.getDate() + 2);
-twoDaysLater.setHours(0, 0, 0, 0);
+    const now = new Date();
 
-// End of that day
-const twoDaysLaterEnd = new Date(twoDaysLater);
-twoDaysLaterEnd.setHours(23, 59, 59, 999);
-    
-    // Find all events happening tomorrow that don't have pools assigned yet
-
-// Start of 48-hour window (48 hours from now)
-const fortyEightHoursLaterStart = new Date(today.getTime() + 48 * 60 * 60 * 1000);
-fortyEightHoursLaterStart.setMinutes(0, 0, 0); // Optional cleanup
-
-// End of that day (24 hours window after 48h point)
-const fortyEightHoursLaterEnd = new Date(fortyEightHoursLaterStart);
-fortyEightHoursLaterEnd.setHours(23, 59, 59, 999);
-      
-const yesterday = new Date(today);
-yesterday.setDate(today.getDate() - 1);
-
-    
-    // Find events happening today with assigned pools
-    const todayEvents = await prisma.event.findMany({
+    // Fetch all upcoming or just-passed events that still need reminders
+    const eventsToRemind = await prisma.event.findMany({
       where: {
-          registrationDeadline: {
-      gte: yesterday,
-      lt: today, // deadline was yesterday
-    },
         poolsAssigned: true,
-         OR: [
-      { reminder60Sent: false },
-      { reminder24Sent: false },
-      { reminder48Sent: false },
-       { ratingSent: false }
-    ]
-        // Check reminder2Sent status
-     //   reminder2Sent: false
+        OR: [
+          { reminder60Sent: false },
+          { reminder24Sent: false },
+          { reminder48Sent: false },
+          { ratingSent: false }
+        ]
       },
       include: {
         registrations: {
@@ -302,154 +267,132 @@ yesterday.setDate(today.getDate() - 1);
         },
         pools: {
           include: {
-            attendees: true
-          }
-        }
-      }
+            attendees: true,
+          },
+        },
+      },
     });
 
-
-
-  
-    
-    if (todayEvents.length === 0) {
+    if (eventsToRemind.length === 0) {
       return {
-        message: 'No events found for today that need reminder 2',
+        message: 'No events found that need reminders',
         processed: 0,
-        runType
+        runType,
       };
     }
-    
-    // Process each event
+
     const results = [];
     let successCount = 0;
     let failureCount = 0;
     let skippedCount = 0;
-    
-   for (const event of todayEvents) {
-  try {
-    const shouldSend = shouldSendReminderNow(event.eventTime, runType);
 
-    if (!shouldSend) {
-      skippedCount++;
-      results.push({
-        eventId: event.id,
-        title: event.title,
-        status: 'skipped',
-        reason: `Not the right time to send reminder based on run type: ${runType}`
-      });
-      continue;
-    }
+    for (const event of eventsToRemind) {
+      try {
+        const shouldSend = shouldSendReminderNow(event.eventTime, runType);
+        if (!shouldSend) {
+          skippedCount++;
+          results.push({
+            eventId: event.id,
+            title: event.title,
+            status: 'skipped',
+            reason: `Not the right time to send reminder based on run type: ${runType}`,
+          });
+          continue;
+        }
 
-    
-    const now = new Date();
+        const eventDateTime = new Date(event.eventDate);
+        const startTimeStr = event.eventTime?.split('-')[0]?.trim();
+        const [startHourRaw, startMinRaw] = startTimeStr?.split(':') ?? ['0', '0'];
+        let eventHour = parseInt(startHourRaw);
+        let eventMinute = parseInt(startMinRaw) || 0;
 
-    const eventDateTime = new Date(event.eventDate);
+        if (startTimeStr?.includes('PM') && eventHour < 12) eventHour += 12;
+        if (startTimeStr?.includes('AM') && eventHour === 12) eventHour = 0;
 
-    // Parse start time
-    const startTimeStr = event.eventTime?.split('-')[0]?.trim();
-    const [startHourRaw, startMinRaw] = startTimeStr?.split(':') ?? ['0', '0'];
-    let eventHour = parseInt(startHourRaw);
-    let eventMinute = parseInt(startMinRaw) || 0;
+        eventDateTime.setHours(eventHour, eventMinute, 0, 0);
+        const diffMinutes = Math.floor((eventDateTime.getTime() - now.getTime()) / 60000);
 
-    if (startTimeStr?.includes('PM') && eventHour < 12) eventHour += 12;
-    if (startTimeStr?.includes('AM') && eventHour === 12) eventHour = 0;
+        let eventResult = null;
 
-    eventDateTime.setHours(eventHour, eventMinute, 0, 0);
+        if (diffMinutes <= 2880 && !event.reminder48Sent) {
+          eventResult = await processEventReminders(event, '48hr');
+          await prisma.event.update({ where: { id: event.id }, data: { reminder48Sent: true } });
+        } else if (diffMinutes <= 1440 && !event.reminder24Sent) {
+          eventResult = await processEventReminders(event, '24hr');
+          await prisma.event.update({ where: { id: event.id }, data: { reminder24Sent: true } });
+        } else if (diffMinutes <= 60 && !event.reminder60Sent) {
+          eventResult = await processEventReminders(event, '60min');
+          await prisma.event.update({ where: { id: event.id }, data: { reminder60Sent: true } });
+        }
 
-    const diffMinutes = Math.floor((eventDateTime.getTime() - now.getTime()) / 60000);
-    console.log(`diffMinutes: ${diffMinutes} for event ${event.id}`);
+        // Handle post-event (rating)
+        const endTimeStr = event.eventTime?.split('-')[1]?.trim();
+        if (endTimeStr) {
+          const [endHourRaw, endMinRaw] = endTimeStr.split(':') ?? ['0', '0'];
+          let endHour = parseInt(endHourRaw);
+          let endMinute = parseInt(endMinRaw) || 0;
 
-    let eventResult = null;
+          if (endTimeStr.includes('PM') && endHour < 12) endHour += 12;
+          if (endTimeStr.includes('AM') && endHour === 12) endHour = 0;
 
-      console.log(diffMinutes);
+          const eventEnd = new Date(event.eventDate);
+          eventEnd.setHours(endHour, endMinute, 0, 0);
 
-    // 48hr first, then 24hr, then 60min
-    if (diffMinutes <= 2880 && !event.reminder48Sent) {
-      eventResult = await processEventReminders(event, '48hr');
-      await prisma.event.update({ where: { id: event.id }, data: { reminder48Sent: true }});
-    } else if (diffMinutes <= 1440 && !event.reminder24Sent) {
-      eventResult = await processEventReminders(event, '24hr');
-      await prisma.event.update({ where: { id: event.id }, data: { reminder24Sent: true }});
-    } else if (diffMinutes <= 60 && !event.reminder60Sent) {
-      eventResult = await processEventReminders(event, '60min');
-      await prisma.event.update({ where: { id: event.id }, data: { reminder60Sent: true }});
-    }
+          if (now > eventEnd && !event.ratingSent) {
+            eventResult = await processEventReminders(event, 'post-event');
+            await prisma.event.update({
+              where: { id: event.id },
+              data: { ratingSent: true },
+            });
+          }
+        }
 
-    // Post-event: send rating if event ended
-    const endTimeStr = event.eventTime?.split('-')[1]?.trim();
-        
-    if (endTimeStr) {
-      const [endHourRaw, endMinRaw] = endTimeStr.split(':') ?? ['0', '0'];
-      let endHour = parseInt(endHourRaw);
-      let endMinute = parseInt(endMinRaw) || 0;
-
-      if (endTimeStr.includes('PM') && endHour < 12) endHour += 12;
-      if (endTimeStr.includes('AM') && endHour === 12) endHour = 0;
-
-      const eventEnd = new Date(event.eventDate);
-      eventEnd.setHours(endHour, endMinute, 0, 0);
-
-      if (now > eventEnd && !event.ratingSent) {
-        eventResult = await processEventReminders(event, 'post-event');
-        await prisma.event.update({
-          where: { id: event.id },
-          data: { ratingSent: true }
+        if (eventResult) {
+          successCount++;
+          results.push({
+            eventId: event.id,
+            title: event.title,
+            status: 'success',
+            details: eventResult,
+          });
+        } else {
+          skippedCount++;
+          results.push({
+            eventId: event.id,
+            title: event.title,
+            status: 'skipped',
+            reason: 'No matching reminder condition met',
+          });
+        }
+      } catch (eventError: unknown) {
+        const errorMessage = eventError instanceof Error ? eventError.message : 'Unknown error';
+        console.error(`[${new Date().toISOString()}] Error processing event ${event.id}:`, eventError);
+        failureCount++;
+        results.push({
+          eventId: event.id,
+          title: event.title,
+          status: 'failed',
+          error: errorMessage,
         });
       }
     }
 
-    if (eventResult) {
-      successCount++;
-      results.push({
-        eventId: event.id,
-        title: event.title,
-        status: 'success',
-        details: eventResult
-      });
-    } else {
-      skippedCount++;
-      results.push({
-        eventId: event.id,
-        title: event.title,
-        status: 'skipped',
-        reason: 'No matching reminder condition met'
-      });
-    }
-
-  } catch (eventError: unknown) {
-    const errorMessage = eventError instanceof Error ? eventError.message : 'Unknown error';
-    console.error(`[${new Date().toISOString()}] Error processing event ${event.id}:`, eventError);
-    failureCount++;
-    results.push({
-      eventId: event.id,
-      title: event.title,
-      status: 'failed',
-      error: errorMessage
-    });
-  }
-}
-
-    
-    // Log a summary
-    console.log(`[${new Date().toISOString()}] Send reminders task completed. Success: ${successCount}, Failed: ${failureCount}, Skipped: ${skippedCount}, Total: ${todayEvents.length}`);
-    
     return {
-      message: `Processed ${todayEvents.length} events for today's reminders`,
+      message: `Processed ${eventsToRemind.length} events for reminders`,
       runType,
       summary: {
-        total: todayEvents.length,
+        total: eventsToRemind.length,
         success: successCount,
         failed: failureCount,
-        skipped: skippedCount
+        skipped: skippedCount,
       },
-      results
+      results,
     };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[${new Date().toISOString()}] Error in send reminders task:`, error);
-    return { 
-      error: 'Failed to process reminders: ' + errorMessage
+    return {
+      error: 'Failed to process reminders: ' + errorMessage,
     };
   }
 }
