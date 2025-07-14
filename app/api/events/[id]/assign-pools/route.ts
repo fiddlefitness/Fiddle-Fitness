@@ -312,7 +312,7 @@ async function assignPools(request: Request, { params }: { params: RequestParams
             event.title,
             eventDate,
             event.eventTime,
-            shortTrainerLink
+            trainerMeetLink
           );
           
           // Send reminder 1 to trainer
