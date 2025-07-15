@@ -1541,9 +1541,14 @@ async function handleEventSelection(user: any, message: any) {
       `*Spots Remaining:* ${spotsRemaining} out of ${event.maxCapacity}`
 
     // Build registration URL with proper encoding
-    const baseUrl =
+   const baseUrl1 =
       process.env.NEXT_PUBLIC_BASE_URL ||
       'https://fiddle-fitness-fiddle-fitness-projects.vercel.app/'
+
+  const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      'https://fiddle-fitness.onrender.com/'
+    
     const registrationUrl = new URL(
       `/payment/${event.id}/${user.mobileNumber}`,
       baseUrl,
