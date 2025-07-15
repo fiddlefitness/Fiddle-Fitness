@@ -305,7 +305,7 @@ if(user1.id){
         // )
 
         // await sendReferralCodeCtaMessage(phoneNumber, '50', user.referralCode)
-        await sendWelcomeAboardTemplate(phoneNumber, '50', user.referralCode)
+     //   await sendWelcomeAboardTemplate(phoneNumber, '50', user.referralCode)
 
         await handleCategorybeforeSelection(user)
         return // Exit early as flow responses don't need further processing
