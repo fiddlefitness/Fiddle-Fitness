@@ -194,15 +194,41 @@ if(user1.id){
   },
 });
 
+
  if (latestRegistration) {
-  await prisma.eventRegistration.update({
-    where: {
-      id: latestRegistration.id,
-    },
-    data: {
-      rating: rating, // your new rating value
-    },
-  });
+     const review = await prisma.eventReview.upsert({
+                                where: {
+                                    userId_eventId: {
+                                        userId: user1.id,
+                                        eventId: latestRegistration.id
+                                    }
+                                },
+                                update: {
+                                    status: 'pending', // Reset to pending if already exists
+                                    rating: null,      // Clear any previous rating
+                                    feedback: null,    // Clear any previous feedback
+                                    updatedAt: new Date() // Update the timestamp
+                                },
+                                create: {
+                                    userId: user1.id,
+                                    eventId: latestRegistration.id,
+                                    status: 'pending',
+                                    rating: rating 
+                                },
+                                select: {
+                                    id: true,
+                                    userId: true
+                                }
+                            });
+                            
+ // await prisma.eventRegistration.update({
+  //  where: {
+  //    id: latestRegistration.id,
+  //  },
+  //  data: {
+  //    rating: rating, // your new rating value
+  //  },
+//  });
 }
   
 }
