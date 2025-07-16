@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import {
     sendTrainerReminder2Template,
     sendUserReminder2Template,
+    sendHelpTroubleshootingMessage,
     sendTextMessage
 } from '@/lib/whatsapp';
 import { NextResponse } from 'next/server';
@@ -481,17 +482,7 @@ async function processEventReminders(event: any, type: '60min' | '24hr' | '48hr'
       
      if (meetLink && registration.user.mobileNumber) {
             if (type === '60min') {
-           await sendTextMessage(registration.user.mobileNumber,`
-  Before You Reach Out for Help, Quick Checks First:
-1.	Internet: Make sure your Wi-Fi or data is stable.
-2.	Zoom Link: Double-check you’re using the correct meeting link.
-3.	App Status: Ensure Zoom is installed and updated.
-4.	Email Login: Use the same email you registered with.
-5.	Password: Enter the correct Zoom password if prompted.
-6.	App Restart: Close and reopen Zoom.
-7.	Device Restart: Still stuck? Restart your device.
-
-Still need help ? Click " Get Help"`);
+          await sendHelpTroubleshootingMessage(registration.user.mobileNumber);
         } else if (type === '24hr') {
         await sendTextMessage(registration.user.mobileNumber,`
           Get Ready for Your Session – Quick Check!
