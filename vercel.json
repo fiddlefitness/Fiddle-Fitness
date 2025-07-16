@@ -2,12 +2,8 @@
   "version": 2,
   "crons": [
     {
-      "path": "/api/scheduler/unified?runType=morning",
-      "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/scheduler/unified?runType=evening",
-      "schedule": "0 14 * * *"
+      "path": "/api/scheduler/unified?runType=reminder",
+      "schedule": "*/10 * * * *"
     }
   ],
   "headers": [
