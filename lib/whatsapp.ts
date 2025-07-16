@@ -622,15 +622,15 @@ export async function sendPoolAssignmentErrorTemplate(
 export async function sendHelpTroubleshootingMessage(recipient: string) {
   try {
     const helpMessage = 
-      "Check the following , before reaching out for help - \n" +
-      "1- Check Internet: Is your Wi-Fi or data connection stable?\n" +
-      "2- Verify Link: Are you using the correct Zoom meeting link?\n" +
-      "3- Zoom App: Is the Zoom app installed and up-to-date?\n" +
-      "4- Email Match: Are you logged into the Zoom app with the email you used for registration (if required)?\n" +
-      "5- Password: If prompted, is your Zoom account password correct?\n" +
-      "6- Restart: Try closing and reopening the Zoom app.\n" +
-      "7- Device Restart: If still stuck, try restarting your device.\n\n" +
-      "Still need help?";
+      "Before You Reach Out for Help, Quick Checks First: \n" +
+      "1.	Internet: Make sure your Wi-Fi or data is stable.\n" +
+      "2.	Zoom Link: Double-check you’re using the correct meeting link.\n" +
+      "3.	App Status: Ensure Zoom is installed and updated.\n" +
+      "4.	Email Login: Use the same email you registered with.\n" +
+      "5.	Password: Enter the correct Zoom password if prompted.\n" +
+      "6.	App Restart: Close and reopen Zoom.\n" +
+      "7.	Device Restart: Still stuck? Restart your device.\n\n" +
+      "Still need help ? Click Get Help";
 
     const response = await axios({
       method: 'POST',
