@@ -1554,7 +1554,14 @@ async function handleEventSelection(user: any, message: any) {
       where: { eventId: event.id },
     })
 
-    // Calculate spots remaining
+       if (event.maxCapacity && registrationCount >= event.maxCapacity) {
+ await sendTextMessage(
+        user.mobileNumber,
+        `Sorry, registration is closed. The event has reached its maximum capacity.`,
+      )
+      }else{
+
+ // Calculate spots remaining
     const spotsRemaining = event.maxCapacity - registrationCount
 
     // Construct event details message with proper formatting
@@ -1614,6 +1621,9 @@ async function handleEventSelection(user: any, message: any) {
         conversationState: ConversationState.IDLE,
       },
     })
+
+
+      }
   } catch (error) {
     console.error('Error sending template message:')
     if (axios.isAxiosError(error)) {
