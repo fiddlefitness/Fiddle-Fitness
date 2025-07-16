@@ -253,10 +253,7 @@ yesterday.setDate(today.getDate() - 1);
     const eventsToRemind = await prisma.event.findMany({
         
       where: {
-             registrationDeadline: {
-          gte: yesterday,
-          lt: today,
-        },
+        
         poolsAssigned: true,
         OR: [
           { reminder60Sent: false },
@@ -300,16 +297,16 @@ yesterday.setDate(today.getDate() - 1);
     for (const event of eventsToRemind) {
       try {
         const shouldSend = shouldSendReminderNow(event.eventTime, runType);
-        if (!shouldSend) {
-          skippedCount++;
-          results.push({
-            eventId: event.id,
-            title: event.title,
-            status: 'skipped',
-            reason: `Not the right time to send reminder based on run type: ${runType}`,
-          });
-          continue;
-        }
+     //   if (!shouldSend) {
+     //     skippedCount++;
+      //    results.push({
+       //     eventId: event.id,
+       //     title: event.title,
+        //    status: 'skipped',
+        //    reason: `Not the right time to send reminder based on run type: ${runType}`,
+        //  });
+       //   continue;
+      //  }
 
         const eventDateTime = new Date(event.eventDate);
         const startTimeStr = event.eventTime?.split('-')[0]?.trim();
@@ -338,18 +335,24 @@ yesterday.setDate(today.getDate() - 1);
 
         // Handle post-event (rating)
         const endTimeStr = event.eventTime?.split('-')[1]?.trim();
-        if (endTimeStr) {
+            if (endTimeStr) {
           const [endHourRaw, endMinRaw] = endTimeStr.split(':') ?? ['0', '0'];
           let endHour = parseInt(endHourRaw);
           let endMinute = parseInt(endMinRaw) || 0;
+
+       
 
           if (endTimeStr.includes('PM') && endHour < 12) endHour += 12;
           if (endTimeStr.includes('AM') && endHour === 12) endHour = 0;
 
           const eventEnd = new Date(event.eventDate);
-          eventEnd.setHours(endHour, endMinute, 0, 0);
+          
+      eventEnd.setHours(endHour, endMinute, 0, 0); // Make sure endHour & endMinute are set
 
-          if (now > eventEnd && !event.ratingSent) {
+const diffInMs = now.getTime() - eventEnd.getTime();
+const diffInMinutes = diffInMs / (1000 * 60);
+   
+if (diffInMinutes >= 60 && !event.ratingSent) {
             eventResult = await processEventReminders(event, 'post-event');
             await prisma.event.update({
               where: { id: event.id },
