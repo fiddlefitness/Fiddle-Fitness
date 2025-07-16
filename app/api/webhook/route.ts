@@ -1,6 +1,6 @@
 import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
 import { extractLast10Digits } from '@/lib/formatMobileNumber'
-import { sendWelcomeAboardTemplate, sendWelcomeMessageTemplate } from '@/lib/whatsapp'
+import { sendWelcomeAboardTemplate, sendWelcomeMessageTemplate,sendUserHelpMessageToAdmin } from '@/lib/whatsapp'
 // import { PrismaClient } from '@prisma/client'
 import { prisma } from '@/lib/prisma';
 import axios from 'axios'
@@ -1880,6 +1880,10 @@ async function handleButtonResponse(user: any, message: any) {
         user.mobileNumber,
         'Thanks for letting us know. Prioritize your health, and well have more sessions soon!',
       )
+    }else if (buttonId === 'get_help') {
+     await sendUserHelpMessageToAdmin(
+        "8827080482",user.name,user.mobileNumber,user.email
+       )
     }
     return true // Indicate that we handled the button
   }
