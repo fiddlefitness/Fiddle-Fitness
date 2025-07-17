@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       if (entry?.changes?.length > 0) {
         const change = entry.changes[0];
 
-        // ✅ Handle incoming message
+        // ✅ Incoming messages
         if (change?.value?.messages?.length > 0) {
           const message = change.value.messages[0];
           let from = message.from;
@@ -97,20 +97,22 @@ export async function POST(req: NextRequest) {
           const messageId = message.id;
 
           console.log(`📥 Message received from ${from}:`, JSON.stringify(message));
-
           handleIncomingMessage(from, message);
         }
 
-        // ✅ Handle message status updates (delivered, read, etc.)
+        // ✅ Status updates (sent, delivered, failed, etc.)
         if (change?.value?.statuses?.length > 0) {
           const status = change.value.statuses[0];
           const messageId = status.id;
           const recipient = status.recipient_id;
-          const statusType = status.status; // e.g., "sent", "delivered", "read", "failed"
+          const statusType = status.status;
 
           console.log(`📦 Message Status for ${recipient}: ${statusType} (message ID: ${messageId})`);
 
-          // You can save to DB or log for analytics
+          // 🔍 Add this to log full status (including failure reasons)
+          console.log('📦 Full Status Payload:', JSON.stringify(status, null, 2));
+
+          // Optional: Save status to DB
           // await saveMessageStatus({ recipient, statusType, messageId });
         }
       }
@@ -122,6 +124,7 @@ export async function POST(req: NextRequest) {
     return new Response('Server Error', { status: 500 });
   }
 }
+
 
 
 /**
