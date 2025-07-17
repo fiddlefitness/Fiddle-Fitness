@@ -1789,7 +1789,11 @@ async function sendFlowTemplate(
   
  //await sendWelcomeMessageTemplate(recipient, 'https://traderscontent.livetraders.com/galary/875199.jpeg');
 
-
+ await sendImageAndText(
+  recipient,
+  'https://fiddle-fitness.onrender.com/welcome.jpeg',
+  'Hi there! Welcome to Fiddle Fitness. We are equally excited & ready to help.'
+);
 
     console.log(`Sending flow template "${templateName}" to ${recipient}...`)
 
@@ -1806,7 +1810,7 @@ async function sendFlowTemplate(
       to: recipient,
         type: 'template',
         template: {
-          name: 'enter_your_details',
+          name: 'trainer_reminder_2',
           language: {
             code: 'en',
           },
