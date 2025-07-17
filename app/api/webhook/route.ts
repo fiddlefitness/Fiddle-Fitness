@@ -1810,7 +1810,7 @@ async function sendFlowTemplate(
       to: recipient,
         type: 'template',
         template: {
-          name: 'trainer_reminder_2',
+          name: 'enter_your_details',
           language: {
             code: 'en',
           },
