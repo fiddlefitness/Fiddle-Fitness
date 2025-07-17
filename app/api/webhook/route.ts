@@ -1789,11 +1789,7 @@ async function sendFlowTemplate(
   
  //await sendWelcomeMessageTemplate(recipient, 'https://traderscontent.livetraders.com/galary/875199.jpeg');
 
- await sendImageAndText(
-  recipient,
-  'https://fiddle-fitness.onrender.com/welcome.jpeg',
-  'Hi there! Welcome to Fiddle Fitness. We are equally excited & ready to help.'
-);
+
 
     console.log(`Sending flow template "${templateName}" to ${recipient}...`)
 
