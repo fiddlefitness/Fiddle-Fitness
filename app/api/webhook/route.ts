@@ -1,6 +1,6 @@
 import { EVENT_CATEGORIES } from '@/lib/constants/categoryIds'
 import { extractLast10Digits } from '@/lib/formatMobileNumber'
-import { sendWelcomeAboardTemplate, sendWelcomeMessageTemplate } from '@/lib/whatsapp'
+import { sendWelcomeAboardTemplate, sendWelcomeMessageTemplate,sendUserHelpMessageToAdmin } from '@/lib/whatsapp'
 // import { PrismaClient } from '@prisma/client'
 import { prisma } from '@/lib/prisma';
 import axios from 'axios'
@@ -151,8 +151,9 @@ async function handleIncomingMessage(
 
 
 const text = message.type === 'text' && message.text?.body?.trim();
-
-if (text && text.toLowerCase() === 'get help') {
+if (text) {
+   const lowerText = text.toLowerCase();
+if (lowerText === 'get help') {
   // 1️⃣ Send a simple text reply
  await sendTextMessage(phoneNumber, `
 *Check the following before reaching out for help:*
@@ -173,7 +174,70 @@ Let me know if you still need further assistance!
 
 
 
+// 📌 Rating trigger (1 to 5)
+if (['1', '2', '3', '4', '5'].includes(lowerText)) {
+  const rating = parseInt(lowerText, 10);
 
+      const result1= await pool.query(
+    'SELECT * FROM "User" WHERE "mobileNumber" = $1 LIMIT 1',
+    [phoneNumber]
+    );
+    let  user1 = result1.rows[0];
+
+if(user1.id){
+  const latestRegistration = await prisma.eventRegistration.findFirst({
+  where: {
+    userId: user1.id,
+  },
+  orderBy: {
+    createdAt: 'desc', // or updatedAt, or eventDate — depends on your schema
+  },
+});
+
+
+ if (latestRegistration) {
+     const review = await prisma.eventReview.upsert({
+                                where: {
+                                    userId_eventId: {
+                                        userId: user1.id,
+                                        eventId: latestRegistration.id
+                                    }
+                                },
+                                update: {
+                                    status: 'pending', // Reset to pending if already exists
+                                    rating: null,      // Clear any previous rating
+                                    feedback: null,    // Clear any previous feedback
+                                    updatedAt: new Date() // Update the timestamp
+                                },
+                                create: {
+                                    userId: user1.id,
+                                    eventId: latestRegistration.id,
+                                    status: 'pending',
+                                    rating: rating 
+                                },
+                                select: {
+                                    id: true,
+                                    userId: true
+                                }
+                            });
+                            
+ // await prisma.eventRegistration.update({
+  //  where: {
+  //    id: latestRegistration.id,
+  //  },
+  //  data: {
+  //    rating: rating, // your new rating value
+  //  },
+//  });
+}
+  
+}
+  // TODO: Save rating to DB or analytics here if needed
+
+  
+  return;
+}
+}
 
 
 
@@ -267,7 +331,7 @@ Let me know if you still need further assistance!
         // )
 
         // await sendReferralCodeCtaMessage(phoneNumber, '50', user.referralCode)
-        await sendWelcomeAboardTemplate(phoneNumber, '50', user.referralCode)
+     //   await sendWelcomeAboardTemplate(phoneNumber, '50', user.referralCode)
 
         await handleCategorybeforeSelection(user)
         return // Exit early as flow responses don't need further processing
@@ -951,13 +1015,13 @@ async function handleCategorybeforeSelection(user: any) {
 
     await sendTextMessage(
       user.mobileNumber,
-      `Thanks ${user.name} 👋, we now know you well. "Thrilled you're here!`,
+      `Thanks ${user.name} 👋, We're thrilled to have you on board`,
     )
 
 
       await sendTextMessage(
       user.mobileNumber,
-      `Your well-being is important,  please consider any health conditions before engaging in physical activity.`,
+      `Please take a moment to consider any existing health conditions before beginning exercise. Your safety is our top priority.`,
     )
 
   const listMessage = {
@@ -1236,11 +1300,51 @@ async function sendEventsList(
     )
     const categoryLabel = categoryInfo ? categoryInfo.label : categoryName
 
+if (categoryLabel === "Zumba") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for choosing *Zumba*! 💃\n\nIt’s a fun-packed workout that energizes your heart, torches calories, and enhances coordination—all while you dance to the beat!`
+  );
 
-     await sendTextMessage(
-     phoneNumber,
-     `Thanks for your selection! ${categoryLabel} 👋,   boosts cardiovascular health, burns calories, and improves coordination through fun, dance-based exercise.`,
-   )
+} else if (categoryLabel === "Dance Fitness") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for dancing with us! 💃🕺\n\n*Dance Fitness* is a full-body cardio blast that keeps your heart happy, energy high, and smile wide—one beat at a time.`
+  );
+
+} else if (categoryLabel === "Tabata HIIT") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for selecting *Tabata HIIT*! 🔥\n\nThis high-intensity workout pushes your limits, builds endurance, and burns fat fast—all in just a few powerful minutes.`
+  );
+
+} else if (categoryLabel === "Strength Training") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for picking *Strength Training*! 🏋️‍♂️\n\nIt helps build lean muscle, improves posture, and boosts metabolism—empowering your body with every rep.`
+  );
+
+} else if (categoryLabel === "Yoga") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for choosing *Yoga*! 🧘‍♀️\n\nThis mindful movement improves flexibility, balance, and inner calm—helping you feel centred and strong from the inside out.`
+  );
+
+} else if (categoryLabel === "Diet Consultation") {
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for opting for *Diet Consultation*! 🥗\n\nGet personalized guidance to eat right, stay energized, and align your meals with your fitness goals.`
+  );
+
+} else {
+  // Fallback if label isn't recognized
+  await sendTextMessage(
+    phoneNumber,
+    `Thanks for choosing *${categoryLabel}*! Let's get started!`
+  );
+}
+
+   
 
 
    await sendTextMessage(
@@ -1450,7 +1554,14 @@ async function handleEventSelection(user: any, message: any) {
       where: { eventId: event.id },
     })
 
-    // Calculate spots remaining
+      if (event.maxCapacity && registrationCount >= event.maxCapacity) {
+ await sendTextMessage(
+        user.mobileNumber,
+        `Sorry, registration is closed. The event has reached its maximum capacity.`,
+      )
+      }else{
+
+ // Calculate spots remaining
     const spotsRemaining = event.maxCapacity - registrationCount
 
     // Construct event details message with proper formatting
@@ -1463,9 +1574,12 @@ async function handleEventSelection(user: any, message: any) {
       `*Spots Remaining:* ${spotsRemaining} out of ${event.maxCapacity}`
 
     // Build registration URL with proper encoding
-    const baseUrl =
+   const baseUrl =
       process.env.NEXT_PUBLIC_BASE_URL ||
       'https://fiddle-fitness-fiddle-fitness-projects.vercel.app/'
+
+ 
+    
     const registrationUrl = new URL(
       `/payment/${event.id}/${user.mobileNumber}`,
       baseUrl,
@@ -1507,6 +1621,10 @@ async function handleEventSelection(user: any, message: any) {
         conversationState: ConversationState.IDLE,
       },
     })
+
+
+      }
+   
   } catch (error) {
     console.error('Error sending template message:')
     if (axios.isAxiosError(error)) {
@@ -1799,6 +1917,10 @@ async function handleButtonResponse(user: any, message: any) {
         user.mobileNumber,
         'Thanks for letting us know. Prioritize your health, and well have more sessions soon!',
       )
+    }else if (buttonId === 'get_help') {
+     await sendUserHelpMessageToAdmin(
+        "8827080482",user.name,user.mobileNumber,user.email
+       )
     }
     return true // Indicate that we handled the button
   }
