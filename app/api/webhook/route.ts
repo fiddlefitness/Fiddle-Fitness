@@ -81,44 +81,48 @@ enum ConversationState {
 // Process incoming messages
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
-
-    // Check if this is a WhatsApp message
+    const body = await req.json();
 
     if (body?.object && body?.entry?.length > 0) {
-      const entry = body.entry[0]
+      const entry = body.entry[0];
 
-      // Make sure it's a WhatsApp Business Account
       if (entry?.changes?.length > 0) {
-        const change = entry.changes[0]
+        const change = entry.changes[0];
 
+        // ✅ Handle incoming message
         if (change?.value?.messages?.length > 0) {
-          // Extract message details
-          const message = change.value.messages[0]
-          let from = message.from // User's phone number
-          from = extractLast10Digits(from) // Extract last 10 digits
-          const messageId = message.id
+          const message = change.value.messages[0];
+          let from = message.from;
+          from = extractLast10Digits(from);
+          const messageId = message.id;
 
-          console.log(`Received message from ${from}:`, JSON.stringify(message))
+          console.log(`📥 Message received from ${from}:`, JSON.stringify(message));
 
-          // // before actually checing the message, check if the body of the message is Hello
-          // if (message.text.body.toLowerCase().includes('hello')) {
-          //   await sendTextMessage(from, '👋 Hello! How can I help you today?')
-          //   return
-          // }
+          handleIncomingMessage(from, message);
+        }
 
-          // Process the message based on type and user state
-          handleIncomingMessage(from, message)
+        // ✅ Handle message status updates (delivered, read, etc.)
+        if (change?.value?.statuses?.length > 0) {
+          const status = change.value.statuses[0];
+          const messageId = status.id;
+          const recipient = status.recipient_id;
+          const statusType = status.status; // e.g., "sent", "delivered", "read", "failed"
+
+          console.log(`📦 Message Status for ${recipient}: ${statusType} (message ID: ${messageId})`);
+
+          // You can save to DB or log for analytics
+          // await saveMessageStatus({ recipient, statusType, messageId });
         }
       }
     }
 
-    return new Response('OK', { status: 200 })
+    return new Response('OK', { status: 200 });
   } catch (error) {
-    console.error('Error processing webhook:', error)
-    return new Response('Server Error', { status: 500 })
+    console.error('❌ Error in webhook:', error);
+    return new Response('Server Error', { status: 500 });
   }
 }
+
 
 /**
  * Main handler for incoming messages
