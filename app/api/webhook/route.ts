@@ -1974,7 +1974,7 @@ export async function sendImageAndText(phoneNumber: string, imageUrl: string, me
 
     console.log("Text message sent!");
   } catch (error) {
-    console.error('Error sending image/text message:', error.response?.data || error.message);
+    console.error('Error sending image/text message:');
     throw error;
   }
 }
