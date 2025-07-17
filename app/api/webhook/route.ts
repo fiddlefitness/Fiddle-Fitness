@@ -1805,52 +1805,83 @@ async function sendFlowTemplate(
 
     console.log(`Sending flow template "${templateName}" to ${recipient}...`)
 
-   const response = await axios({
-  method: 'POST',
-  url: `${flowBaseUrl}/messages`,
-  headers: {
-    Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-    'Content-Type': 'application/json',
-  },
-  data: {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to: recipient,
-    type: 'template',
-    template: {
-      name: 'enter_your_details', // must be the exact name of your flow-enabled template
-      language: {
-        code: 'en',
+ const response = await axios({
+      method: 'POST',
+      url: `${flowBaseUrl}/messages`,
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
       },
-      components: [
-        {
-          type: 'button',
-          sub_type: 'flow',
-          index: '0',
-          parameters: [
+      data: {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: recipient,
+        type: 'template',
+        template: {
+          name: 'enter_your_details',
+          language: {
+            code: 'en',
+          },
+          components: [
+            // If your template has a header (image, document, video, or text)
+            // {
+            //   type: 'header',
+            //   parameters: [
+            //     // For text header
+            //     {
+            //       type: 'text',
+            //       text: 'User Registration',
+            //     },
+            //     // For image header, use this instead:
+            //     // {
+            //     //     type: "image",
+            //     //     image: {
+            //     //         link: "https://example.com/your-image.jpg"
+            //     //     }
+            //     // }
+            //   ],
+            // },
+            // If your template has body parameters (variables in double curly braces like {{1}})
+            // {
+            //   type: 'body',
+            //   parameters: [
+            //     {
+            //       type: 'text',
+            //       text: 'registration form',
+            //     },
+            //     // Add more parameters as needed based on your template
+            //   ],
+            // },
+            // If your template has buttons
             {
-              type: 'action',
-              action: {
-                flow_token: 'unused', // or actual token if dynamic flow
-                flow_action_data: {
-                  data: {
-                    name: '',
-                    email: '',
-                    age: '',
-                    gender: '',
-                    city: '',
-                    phoneNumber: '',
+              type: 'button',
+              sub_type: 'FLOW',
+              index: '0',
+              parameters: [
+                {
+                  type: 'action',
+                  action: {
+                    flow_token: recipient, //optional, default is "unused"
+                    flow_action_data: {
+                      flow_action_payload: {
+                        data: {
+                          name: '',
+                          email: '',
+                          age: '',
+                          gender: '',
+                          city: '',
+                          phoneNumber: '',
+                        },
+                      },
+                    },
                   },
                 },
-              },
+              ],
             },
           ],
         },
-      ],
-    },
-  },
-});
-
+      },
+    })
 
     console.log('Template message sent successfully!')
     console.log('Response:', JSON.stringify(response.data, null, 2))
