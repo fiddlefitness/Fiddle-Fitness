@@ -3,11 +3,11 @@ import { sendInvoiceEmail } from "@/lib/email";
 
 export async function POST() {
   const invoiceData = {
-    invoiceNumber: "INV-2025-001",
+    invoiceNumber: "INV-2025-002",
     date: new Date().toLocaleDateString(),
     clientName: "John Doe",
     clientEmail: "hemantkanojia7@gmail.com",
-    clientPhone: "9994183275",
+    clientPhone: "",
     items: [
       {
         description: "Annual Membership",
