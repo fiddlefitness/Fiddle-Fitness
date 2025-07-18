@@ -7,7 +7,7 @@
     },
     {
        "path": "/api/scheduler/unified?runType=evening",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 14 * * *"
     }
   ],
   "headers": [
