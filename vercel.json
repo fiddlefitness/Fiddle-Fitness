@@ -8,9 +8,6 @@
     {
       "path": "/api/scheduler/unified?runType=evening",
       "schedule": "0 14 * * *"
-    },{
-      "path": "/api/scheduler/unified?runType=reminder",
-      "schedule": "*/10 * * * *"
     }
   ],
   "headers": [
