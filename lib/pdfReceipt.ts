@@ -44,7 +44,7 @@ export async function createInvoicePDF({
 
 
 
-
+ // Fetch logo from public folderdd
 
  // Fetch logo from public folder
  // ✅ Correct way to load the logo from /public
