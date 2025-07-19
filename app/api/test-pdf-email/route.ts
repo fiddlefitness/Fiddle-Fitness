@@ -1,30 +1,23 @@
-import { createInvoicePDF } from "@/lib/pdfReceipt";
-import { sendInvoiceEmail } from "@/lib/email";
+import { withApiKey } from '@/lib/authMiddleware';
+import { prisma } from '@/lib/prisma';
+import {
+    sendTrainerReminder2Template,
+    sendUserReminder2Template,
+    sendHelpTroubleshootingMessage,
+    sendTextMessage
+} from '@/lib/whatsapp';
+import { NextResponse } from 'next/server';
 
-export async function POST() {
-  const invoiceData = {
-    invoiceNumber: "INV-2025-002",
-    date: new Date().toLocaleDateString(),
-    clientName: "John Doe",
-    clientEmail: "hemantkanojia7@gmail.com",
-    clientPhone: "",
-    items: [
-      {
-        description: "Annual Membership",
-        quantity: 1,
-        price: 1200,
-      },
-    ],
-  };
 
-  const pdfBuffer = await createInvoicePDF(invoiceData);
+await sendTextMessage(9994183275,`
+          Get Ready for Your Session – Quick Check!
+Here's how to ensure you're all set to go:
+•	Strong Wi-Fi: Aim for 30 Mbps+ for smooth streaming.
+•	Zoom Login: Use your registered email to access the session.
+•	Screen Choice: Smart TV or laptop works best (mobile if needed).
+•	Crisp Audio: Plug in your speakers or headphones for clear sound.
+•	Clear Space: Make room to move freely and keep water nearby.
+•	Comfy Gear: Dress to move, stretch, and sweat with ease! 
 
-  await sendInvoiceEmail({
-    to: invoiceData.clientEmail,
-    subject: "Fiddle Fitness Invoice",
-    text: "Please find your invoice attached.",
-    attachmentBuffer: pdfBuffer,
-  });
-
-  return new Response(JSON.stringify({ success: true }), { status: 200 });
-}
+Let's make this session awesome!
+`);
