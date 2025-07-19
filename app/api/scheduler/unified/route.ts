@@ -323,13 +323,13 @@ yesterday.setDate(today.getDate() - 1);
 
         let eventResult = null;
 
-        if (diffMinutes <= 2880 && !event.reminder48Sent) {
+        if (!event.reminder48Sent) {
           eventResult = await processEventReminders(event, '48hr');
           await prisma.event.update({ where: { id: event.id }, data: { reminder48Sent: true } });
-        } else if (diffMinutes <= 1440 && !event.reminder24Sent) {
+        } else if (!event.reminder24Sent) {
           eventResult = await processEventReminders(event, '24hr');
           await prisma.event.update({ where: { id: event.id }, data: { reminder24Sent: true } });
-        } else if (diffMinutes <= 60 && !event.reminder60Sent) {
+        } else if (!event.reminder60Sent) {
           eventResult = await processEventReminders(event, '60min');
           await prisma.event.update({ where: { id: event.id }, data: { reminder60Sent: true } });
         }
@@ -453,7 +453,7 @@ function shouldSendReminderNow(eventTime: string | null, runType: string): boole
  * Process sending reminders for a specific event
  * async function sendReminder(event: any, type: '60min' | '24hr' | '48hr') {
  */
-async function processEventReminders(event: any, type: '60min' | '24hr' | '48hr') {
+async function processEventReminders(event: any, type: '60min' | '24hr' | '48hr' | 'post-event') {
   const userResults = [];
   const trainerResults = [];
   
@@ -502,7 +502,7 @@ Let's make this session awesome!
             event.title,
             meetLink
           );
-        }else{
+        }else if (type === 'post-event') {
    await sendTextMessage(registration.user.mobileNumber, `
         Please rate your satisfaction with the event on a scale of 1 (Very Unsatisfied) to 5 (Very Satisfied). Your feedback is important to us.
             `);
