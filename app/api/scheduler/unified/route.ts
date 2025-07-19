@@ -480,12 +480,12 @@ async function processEventReminders(event: any, type: '60min' | '24hr' | '48hr'
         .find((pa: any) => pa.userId === registration.userId);
       
       const meetLink = poolAttendee?.meetLink || poolWithLinks.meetLink;
-                console.log("fitness_type",type)
+             
      if (meetLink && registration.user.mobileNumber) {
             if (type === '60min') {
           await sendHelpTroubleshootingMessage(registration.user.mobileNumber);
         } else if (type === '24hr') {
-                console.log("fitness_type")
+                
         await sendTextMessage(registration.user.mobileNumber,`
           Get Ready for Your Session – Quick Check!
 Here's how to ensure you're all set to go:
