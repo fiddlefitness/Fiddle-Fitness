@@ -18,7 +18,7 @@ Here's how to ensure you're all set to go:
 Let's make this session awesome!
     `;
 
-    const result = await sendTextMessage(mobile, message);
+    const result = await sendUserReminderTemplate(mobile);
     console.log('✅ Message sent:', result);
 
     return NextResponse.json({ success: true, result });
