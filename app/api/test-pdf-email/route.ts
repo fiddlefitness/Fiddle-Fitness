@@ -4,7 +4,7 @@ import { sendTextMessage } from '@/lib/whatsapp';
 
 export async function POST(req: NextRequest) {
   try {
-    const mobile = '919994183275'; // full international format (India = 91)
+    const mobile = '9994183275'; // full international format (India = 91)
     const message = `
       Get Ready for Your Session – Quick Check!
 Here's how to ensure you're all set to go:
