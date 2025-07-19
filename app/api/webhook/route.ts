@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
        //   console.log(`📦 Message Status for ${recipient}: ${statusType} (message ID: ${messageId})`);
 
           // 🔍 Add this to log full status (including failure reasons)
-       //   console.log('📦 Full Status Payload:', JSON.stringify(status, null, 2));
+      console.log('📦 Full Status Payload:', JSON.stringify(status, null, 2));
 
           // Optional: Save status to DB
           // await saveMessageStatus({ recipient, statusType, messageId });
