@@ -1,6 +1,6 @@
 // /app/api/test-send/route.ts (for app router)
 import { NextRequest, NextResponse } from 'next/server';
-import { sendTextMessage } from '@/lib/whatsapp';
+import { sendTextMessage,sendUserReminderTemplate } from '@/lib/whatsapp';
 
 export async function POST(req: NextRequest) {
   try {
