@@ -454,6 +454,7 @@ function shouldSendReminderNow(eventTime: string | null, runType: string): boole
  * async function sendReminder(event: any, type: '60min' | '24hr' | '48hr') {
  */
 async function processEventReminders(event: any, type: '60min' | '24hr' | '48hr' | 'post-event') {
+      console.log(type);
   const userResults = [];
   const trainerResults = [];
   
@@ -497,6 +498,7 @@ Here's how to ensure you're all set to go:
 Let's make this session awesome!
 `);
         } else if (type === '48hr') {
+              
           await sendUserReminder2Template(
            registration.user.mobileNumber,
             event.title,
