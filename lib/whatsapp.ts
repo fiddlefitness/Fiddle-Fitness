@@ -105,6 +105,7 @@ export async function sendTextMessage(
     });
     
     return response.data;
+     console.error('Success sending text message:', response.data);
   } catch (error) {
     console.error('Error sending text message:', error);
     throw error;
