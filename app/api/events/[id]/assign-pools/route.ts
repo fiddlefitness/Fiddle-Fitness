@@ -284,7 +284,7 @@ async function assignPools(request: Request, { params }: { params: RequestParams
           
           // Send reminder 1 to user
           try {
-            await sendUserReminderTemplate(registration.user.mobileNumber);
+        //    await sendUserReminderTemplate(registration.user.mobileNumber);
           } catch (reminderError) {
             console.error('Error sending user reminder 1:', reminderError);
             // Don't fail if sending reminder fails
@@ -317,7 +317,7 @@ async function assignPools(request: Request, { params }: { params: RequestParams
           
           // Send reminder 1 to trainer
           try {
-            await sendTrainerReminderTemplate(trainer.mobileNumber);
+         //   await sendTrainerReminderTemplate(trainer.mobileNumber);
           } catch (reminderError) {
             console.error('Error sending trainer reminder 1:', reminderError);
             // Don't fail if sending reminder fails
