@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import {
     sendTrainerReminder2Template,
     sendUserReminder2Template,
+    sendUserReminderTemplate,
+    sendTrainerReminderTemplate,
     sendHelpTroubleshootingMessage,
     sendTextMessage
 } from '@/lib/whatsapp';
@@ -485,19 +487,8 @@ async function processEventReminders(event: any, type: '60min' | '24hr' | '48hr'
             if (type === '60min') {
           await sendHelpTroubleshootingMessage(registration.user.mobileNumber);
         } else if (type === '24hr') {
-                
-        await sendTextMessage(registration.user.mobileNumber,`
-          Get Ready for Your Session – Quick Check!
-Here's how to ensure you're all set to go:
-•	Strong Wi-Fi: Aim for 30 Mbps+ for smooth streaming.
-•	Zoom Login: Use your registered email to access the session.
-•	Screen Choice: Smart TV or laptop works best (mobile if needed).
-•	Crisp Audio: Plug in your speakers or headphones for clear sound.
-•	Clear Space: Make room to move freely and keep water nearby.
-•	Comfy Gear: Dress to move, stretch, and sweat with ease! 
-
-Let's make this session awesome!
-`);
+      await sendUserReminderTemplate(registration.user.mobileNumber);
+       
         } else if (type === '48hr') {
               
           await sendUserReminder2Template(
@@ -556,18 +547,7 @@ Let's make this session awesome!
 Still need help ? Click " Get Help"
             `);
         } else if (type === '24hr') {
-                   await sendTextMessage(trainer.mobileNumber,`
-            Hi ${trainer.name}, quick reminder before your session 
-1.	Test your tech – Audio, video, and Wi-Fi.
-2.	Playlist ready? – Keep it set and shareable.
-3.	Clear your space – Room to move freely.
-4.	Light it up – Make sure you’re well-lit.
-5.	Stay engaging – Use clear cues and keep it fun.
-6.	Keep water nearby – Stay hydrated.
-7.	Be early – Log in a few mins before.
-8.	Have a backup plan – Just in case tech glitches.
-9.	Bring the vibe! – Energy and smiles all the way!
-            `);
+           await sendTrainerReminderTemplate(trainer.mobileNumber);
         } else if (type === '48hr') {
            await sendTrainerReminder2Template(
           trainer.mobileNumber,
