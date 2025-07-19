@@ -273,14 +273,14 @@ async function assignPools(request: Request, { params }: { params: RequestParams
           const shortLink = await shortenLink(userMeetLink);
           
           // Send template message with the shortened link
-          await sendEventMeetLinkTemplate(
-            registration.user.mobileNumber,
-            event.title,
-            eventDate,
-            event.eventTime,
-            trainers[0].name,
-            shortLink
-          );
+       //   await sendEventMeetLinkTemplate(
+       //     registration.user.mobileNumber,
+       //     event.title,
+      //      eventDate,
+      //      event.eventTime,
+       //     trainers[0].name,
+    //        shortLink
+   //       );
           
           // Send reminder 1 to user
           try {
@@ -306,14 +306,14 @@ async function assignPools(request: Request, { params }: { params: RequestParams
           const shortTrainerLink = await shortenLink(trainerMeetLink);
           
           // Send template message to trainer with shortened link
-          await sendMeetLinkTrainerTemplate(
-            trainer.mobileNumber,
-            trainer.name,
-            event.title,
-            eventDate,
-            event.eventTime,
-            trainerMeetLink
-          );
+      //    await sendMeetLinkTrainerTemplate(
+        //    trainer.mobileNumber,
+        //    trainer.name,
+        //    event.title,
+        //    eventDate,
+        //    event.eventTime,
+        //    trainerMeetLink
+         // );
           
           // Send reminder 1 to trainer
           try {
@@ -353,14 +353,14 @@ async function assignPools(request: Request, { params }: { params: RequestParams
           // Generate dashboard URL for the event
           const dashboardUrl = (EventDataForError as unknown as EventData).id;
           
-          await sendPoolAssignmentErrorTemplate(
-            ownerPhone,
-            (EventDataForError as unknown as EventData).title,
-            eventDate,
-            (EventDataForError as unknown as EventData).eventTime,
-            error instanceof Error ? error.message : 'Failed to assign pools',
-            dashboardUrl
-          );
+       //   await sendPoolAssignmentErrorTemplate(
+        //    ownerPhone,
+        //    (EventDataForError as unknown as EventData).title,
+         //   eventDate,
+       //     (EventDataForError as unknown as EventData).eventTime,
+      //      error instanceof Error ? error.message : 'Failed to assign pools',
+      //      dashboardUrl
+    //      );
         }
       }
     } catch (notificationError) {
